@@ -1,14 +1,22 @@
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = "postgresql+psycopg2://postgres:postgres@db:5432/discovery"
+BASE_DIR = Path(__file__).resolve().parents[2]
+DATA_DIR = BASE_DIR / "data"
+DB_PATH = DATA_DIR / "discovery_agent.db"
 
-engine = create_engine(DATABASE_URL, future=True)
+# Русский комментарий: директория базы создаётся автоматически для локального запуска на Windows.
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():
-    # Русский комментарий: базовая зависимость FastAPI для работы с БД в рамках запроса.
     db = SessionLocal()
     try:
         yield db

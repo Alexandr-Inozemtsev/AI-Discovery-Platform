@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -21,7 +20,7 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectRead(BaseModel):
-    id: UUID
+    id: str
     project_name: str
     business_domain: str | None
     status: ProjectStatus
@@ -39,8 +38,8 @@ class ArtifactWrite(BaseModel):
 
 
 class ArtifactRead(BaseModel):
-    id: UUID
-    project_id: UUID
+    id: str
+    project_id: str
     artifact_type: ArtifactType
     content: str
     version: int
