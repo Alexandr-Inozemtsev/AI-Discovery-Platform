@@ -28,6 +28,7 @@ class ProjectStage(str, enum.Enum):
     REQUIREMENTS = "REQUIREMENTS"
     RISKS = "RISKS"
     FINAL_BT = "FINAL_BT"
+    VALIDATION_REPORT = "VALIDATION_REPORT"
 
 
 class ArtifactType(str, enum.Enum):
@@ -43,6 +44,7 @@ class ArtifactType(str, enum.Enum):
     RISKS = "RISKS"
     GLOSSARY = "GLOSSARY"
     FINAL_BT = "FINAL_BT"
+    VALIDATION_REPORT = "VALIDATION_REPORT"
 
 
 class DiscoveryProject(Base):

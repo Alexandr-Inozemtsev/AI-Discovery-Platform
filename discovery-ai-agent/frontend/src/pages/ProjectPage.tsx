@@ -3,10 +3,17 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { ArtifactType, Project } from '../types/discovery'
 
-const tabs: {label: string; type: ArtifactType}[] = [
-  { label: 'Контекст', type: 'CONTEXT' }, { label: 'Проблема', type: 'PROBLEM' }, { label: 'Цель', type: 'GOAL' },
-  { label: 'Бизнес-эффект', type: 'BUSINESS_EFFECT' }, { label: 'AS IS', type: 'AS_IS' }, { label: 'TO BE', type: 'TO_BE' },
-  { label: 'Use Cases', type: 'USE_CASES' }, { label: 'Требования', type: 'FUNCTIONAL_REQUIREMENTS' }, { label: 'Риски', type: 'RISKS' }, { label: 'Финальный БТ', type: 'FINAL_BT' }
+const tabs: {label: string; type: ArtifactType; generationType?: ArtifactType}[] = [
+  { label: 'Контекст', type: 'CONTEXT' },
+  { label: 'Проблема', type: 'PROBLEM', generationType: 'PROBLEM' },
+  { label: 'Цель', type: 'GOAL', generationType: 'GOAL' },
+  { label: 'Бизнес-эффект', type: 'BUSINESS_EFFECT', generationType: 'BUSINESS_EFFECT' },
+  { label: 'AS IS', type: 'AS_IS' },
+  { label: 'TO BE', type: 'TO_BE' },
+  { label: 'Use Cases', type: 'USE_CASES', generationType: 'USE_CASES' },
+  { label: 'Требования', type: 'FUNCTIONAL_REQUIREMENTS', generationType: 'FUNCTIONAL_REQUIREMENTS' },
+  { label: 'Риски', type: 'RISKS' },
+  { label: 'Финальный БТ', type: 'FINAL_BT', generationType: 'FINAL_BT' }
 ]
 
 export default function ProjectPage() {
@@ -15,22 +22,61 @@ export default function ProjectPage() {
   const [active, setActive] = useState<ArtifactType>('CONTEXT')
   const [content, setContent] = useState('')
   const [version, setVersion] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const currentTab = tabs.find(t => t.type === active)
+  const canGenerate = Boolean(currentTab?.generationType)
 
   const loadProject = async () => setProject(await api<Project>(`/projects/${projectId}`))
   const loadArtifact = async (type: ArtifactType) => {
     try { const a = await api<any>(`/projects/${projectId}/artifacts/${type}`); setContent(a.content); setVersion(a.version) }
     catch { setContent(''); setVersion(null) }
   }
+
   useEffect(() => { loadProject() }, [projectId])
   useEffect(() => { loadArtifact(active) }, [active, projectId])
 
   const saveProject = async () => {
-    await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ project_name: project?.project_name, business_domain: project?.business_domain, jira_epic_url: project?.jira_epic_url }) })
-    loadProject()
+    try {
+      setError('')
+      await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ project_name: project?.project_name, business_domain: project?.business_domain, jira_epic_url: project?.jira_epic_url }) })
+      loadProject()
+    } catch {
+      setError('Не удалось сохранить проект. Проверьте доступность backend.')
+    }
   }
+
   const saveArtifact = async () => {
-    const a = await api<any>(`/projects/${projectId}/artifacts/${active}`, { method: 'PUT', body: JSON.stringify({ content }) })
-    setVersion(a.version)
+    try {
+      setError('')
+      const a = await api<any>(`/projects/${projectId}/artifacts/${active}`, { method: 'PUT', body: JSON.stringify({ content }) })
+      setVersion(a.version)
+    } catch {
+      setError('Не удалось сохранить артефакт. Повторите попытку.')
+    }
+  }
+
+  const generateArtifact = async () => {
+    if (!currentTab?.generationType) return
+    try {
+      setBusy(true); setError('')
+      const a = await api<any>(`/projects/${projectId}/generate/${currentTab.generationType}`, { method: 'POST' })
+      setContent(a.content)
+      setVersion(a.version)
+    } catch {
+      setError('Ошибка генерации. Для этой вкладки генерация может быть недоступна.')
+    } finally { setBusy(false) }
+  }
+
+  const validateProject = async () => {
+    try {
+      setBusy(true); setError('')
+      await api<any>(`/projects/${projectId}/validate`, { method: 'POST' })
+      setError('Проверка завершена. Отчёт сохранён в VALIDATION_REPORT.')
+    } catch {
+      setError('Не удалось выполнить проверку проекта.')
+    } finally { setBusy(false) }
   }
 
   if (!project) return <div style={{ padding: 24 }}>Loading...</div>
@@ -47,10 +93,11 @@ export default function ProjectPage() {
     <textarea value={content} onChange={e => setContent(e.target.value)} style={{ width: '100%', minHeight: 220, marginTop: 12 }} />
     <div style={{ marginTop: 8 }}>
       <button onClick={saveArtifact}>Сохранить</button>
-      <button disabled style={{ marginLeft: 8 }}>Сгенерировать</button>
-      <button disabled style={{ marginLeft: 8 }}>Проверить</button>
+      <button disabled={!canGenerate || busy} onClick={generateArtifact} style={{ marginLeft: 8 }}>{busy ? 'Генерация...' : 'Сгенерировать'}</button>
+      <button disabled={busy} onClick={validateProject} style={{ marginLeft: 8 }}>Проверить</button>
       <button disabled style={{ marginLeft: 8 }}>Сформировать БТ</button>
       <span style={{ marginLeft: 12 }}>Версия: {version ?? '—'}</span>
     </div>
+    {error && <p style={{ color: error.startsWith('Проверка завершена') ? 'green' : 'crimson' }}>{error}</p>}
   </div>
 }

@@ -46,3 +46,23 @@
 
 ### Health
 - `GET /health`
+
+## Этап 2: Mock AI Agents
+
+### Что добавлено
+- `POST /api/projects/{project_id}/generate/{artifact_type}` — генерация артефакта mock-агентом и сохранение с увеличением версии.
+- `POST /api/projects/{project_id}/validate` — запуск CriticAgent и сохранение отчёта в `VALIDATION_REPORT`.
+- Архитектура `llm/base.py` + `llm/mock_client.py`, которую позже можно заменить на корпоративный LLM-клиент без переписывания агентов.
+
+### Как протестировать генерацию
+1. Запустить `start.bat`.
+2. Создать проект на главной странице.
+3. Открыть вкладки «Проблема», «Цель», «Бизнес-эффект», «Use Cases», «Требования» или «Финальный БТ».
+4. Нажать «Сгенерировать».
+5. Убедиться, что textarea заполнена и версия артефакта увеличилась.
+6. Нажать «Проверить» и убедиться, что появился отчёт `VALIDATION_REPORT`.
+
+### Как позже заменить MockLLMClient
+1. Создать `CorporateLLMClient`, реализующий интерфейс `BaseLLMClient.generate(prompt: str) -> str`.
+2. В `agents/orchestrator.py` заменить инициализацию `MockLLMClient()` на `CorporateLLMClient()`.
+3. При необходимости добавить конфигурацию токенов/URL в отдельный settings-модуль.
