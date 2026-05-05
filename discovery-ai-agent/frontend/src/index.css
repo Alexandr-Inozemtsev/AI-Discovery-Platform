@@ -1,26 +1,16 @@
-:root {
-  font-family: Inter, Segoe UI, Arial, sans-serif;
-  color: #1f2937;
-  background: #f5f7fb;
-}
-* { box-sizing: border-box; }
-body { margin: 0; }
-.container { max-width: 1280px; margin: 0 auto; padding: 20px; }
-.topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 14px 20px; position: sticky; top: 0; z-index: 10; }
-.topbar-inner { display:flex; justify-content:space-between; align-items:center; max-width:1280px; margin:0 auto; }
-.title { font-size: 20px; font-weight: 700; }
-.subtitle { font-size: 13px; color:#6b7280; }
-.btn { border:1px solid #d1d5db; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; }
-.btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
-.card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; }
-.input, .textarea { width:100%; border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; }
-.textarea{ min-height:220px; resize:vertical; }
-.grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
-.badge { font-size:12px; padding:4px 8px; border-radius:12px; background:#eff6ff; color:#1d4ed8; }
-.layout { display:grid; grid-template-columns:280px 1fr; gap:16px; }
-.sidebar-item { padding:10px 12px; border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; }
-.sidebar-item.active { background:#e8efff; color:#1d4ed8; font-weight:600; }
-.message { margin-top: 10px; font-size: 14px; }
-.message.error { color:#b91c1c; }
-.message.success { color:#15803d; }
-@media (max-width: 960px){ .layout{ grid-template-columns:1fr; } }
+:root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a;background:#f4f7fb}
+*{box-sizing:border-box}body{margin:0}
+.container{max-width:1320px;margin:0 auto;padding:24px}
+.topbar{background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:5}.topbar-inner{max-width:1320px;margin:0 auto;padding:14px 24px;display:flex;justify-content:space-between;align-items:center}
+.brand{font-size:22px;font-weight:700}.sub{font-size:13px;color:#64748b}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:8px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+.btn{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:10px;padding:10px 14px;cursor:pointer;text-decoration:none}.btn.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+.input,.textarea{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px}.textarea{min-height:240px}
+.hero{background:linear-gradient(125deg,#1d4ed8,#0ea5e9);color:#fff;border-radius:18px;padding:24px;margin-bottom:18px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.gridCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.layout{display:grid;grid-template-columns:280px 1fr;gap:16px}.sidebar-item{padding:10px;border-radius:10px;display:flex;justify-content:space-between;cursor:pointer}.sidebar-item.active{background:#dbeafe;color:#1d4ed8;font-weight:700}
+.progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}.progress>div{height:100%;background:#22c55e}
+.timeline{display:flex;gap:8px;overflow:auto}.chip{padding:8px 10px;border-radius:999px;font-size:12px;white-space:nowrap}
+.not_started{background:#e5e7eb;color:#4b5563}.in_progress{background:#dbeafe;color:#1d4ed8}.completed{background:#dcfce7;color:#15803d}
+@media(max-width:1024px){.grid4{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}}

@@ -15,7 +15,7 @@ critic = CriticAgent(orchestrator.get_agent("PROBLEM").llm)
 SECTION_META = {
     "CONTEXT": ("Контекст", True), "PROBLEM": ("Проблема", True), "GOAL": ("Цель", True), "BUSINESS_EFFECT": ("Бизнес-эффект", True),
     "AS_IS": ("AS IS", True), "TO_BE": ("TO BE", True), "USE_CASES": ("Use Cases", True), "FUNCTIONAL_REQUIREMENTS": ("Требования", True),
-    "RISKS": ("Риски", True), "FINAL_BT": ("Финальный БТ", False), "NON_FUNCTIONAL_REQUIREMENTS": ("Нефункциональные", False), "VALIDATION_REPORT": ("Отчёт проверки", False),
+    "RISKS": ("Риски", True), "FINAL_BT": ("Финальный БТ", True), "NON_FUNCTIONAL_REQUIREMENTS": ("Нефункциональные", False), "VALIDATION_REPORT": ("Отчёт проверки", False),
 }
 
 def _has_values(val):
@@ -85,11 +85,17 @@ def completion(project_id: str, db: Session = Depends(get_db)):
     sections=[]; req_total=0; req_done=0; missing=[]
     for t,(title,req) in SECTION_META.items():
         a=art.get(t)
-        done=bool(a and (_has_values(a.content) or _has_values(a.structured_content)))
+        text=(a.content or '').strip() if a else ''
+        if not a or not text:
+            status='not_started'
+        elif len(text) < 50:
+            status='in_progress'
+        else:
+            status='completed'
         if req:
             req_total += 1
-            if done: req_done +=1
+            if status == 'completed': req_done +=1
             else: missing.append(title)
-        sections.append(CompletionSection(artifact_type=ArtifactType(t), title=title, is_required=req, is_completed=done, completion_notes='Заполнено' if done else 'Нужно заполнить'))
+        sections.append(CompletionSection(artifact_type=ArtifactType(t), title=title, status=status, is_required=req, version=(a.version if a else 0)))
     pct = int((req_done/req_total)*100) if req_total else 0
-    return CompletionResponse(completion_percent=pct, required_sections_total=req_total, required_sections_completed=req_done, missing_sections=missing, sections=sections)
+    return CompletionResponse(completion_percent=pct, sections=sections, required_sections_total=req_total, required_sections_completed=req_done, missing_sections=missing)
