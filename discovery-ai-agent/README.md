@@ -66,3 +66,14 @@
 1. Создать `CorporateLLMClient`, реализующий интерфейс `BaseLLMClient.generate(prompt: str) -> str`.
 2. В `agents/orchestrator.py` заменить инициализацию `MockLLMClient()` на `CorporateLLMClient()`.
 3. При необходимости добавить конфигурацию токенов/URL в отдельный settings-модуль.
+
+## Этап 3: Structured Discovery Forms + Completion Checklist
+- Добавлены структурированные формы по этапам Discovery (Problem, Goal, Business Effect, Use Cases, Requirements, Risks).
+- Добавлен progress/checklist endpoint `GET /api/projects/{project_id}/completion`.
+- Сохранение артефакта теперь поддерживает `content` + `structured_content`.
+
+### Как проверить
+1. Откройте проект в Workspace.
+2. Выберите режим «Структурированная форма», заполните поля и нажмите «Сохранить».
+3. Проверьте, что в Progress Panel вырос процент completion.
+4. Переключитесь на «Свободный текст» и сохраните `content` — чеклист также учитывает заполненность.

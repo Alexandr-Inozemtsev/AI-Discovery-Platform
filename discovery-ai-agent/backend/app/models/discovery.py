@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -49,7 +49,6 @@ class ArtifactType(str, enum.Enum):
 
 class DiscoveryProject(Base):
     __tablename__ = "discovery_projects"
-
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_name: Mapped[str] = mapped_column(String(255), nullable=False)
     business_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -58,19 +57,17 @@ class DiscoveryProject(Base):
     jira_epic_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
     artifacts: Mapped[list["DiscoveryArtifact"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class DiscoveryArtifact(Base):
     __tablename__ = "discovery_artifacts"
-
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("discovery_projects.id", ondelete="CASCADE"), nullable=False)
     artifact_type: Mapped[ArtifactType] = mapped_column(Enum(ArtifactType), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    structured_content: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
     project: Mapped[DiscoveryProject] = relationship(back_populates="artifacts")

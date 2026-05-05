@@ -46,14 +46,15 @@ def get_artifact(db: Session, project_id, artifact_type: ArtifactType):
     ).first()
 
 
-def upsert_artifact(db: Session, project_id, artifact_type: ArtifactType, content: str):
+def upsert_artifact(db: Session, project_id, artifact_type: ArtifactType, content: str, structured_content=None):
     # Русский комментарий: версия увеличивается на каждом сохранении существующего артефакта.
     artifact = get_artifact(db, project_id, artifact_type)
     if artifact is None:
-        artifact = DiscoveryArtifact(project_id=project_id, artifact_type=artifact_type, content=content, version=1)
+        artifact = DiscoveryArtifact(project_id=project_id, artifact_type=artifact_type, content=content, structured_content=structured_content, version=1)
         db.add(artifact)
     else:
         artifact.content = content
+        artifact.structured_content = structured_content
         artifact.version += 1
     db.commit()
     db.refresh(artifact)
