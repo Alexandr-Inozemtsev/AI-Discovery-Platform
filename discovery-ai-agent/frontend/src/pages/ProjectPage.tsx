@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Download, MoreHorizontal, Database, RefreshCcw } from 'lucide-react'
+import { Download, MoreHorizontal, Database, RefreshCcw } from 'lucide-react'
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -130,18 +130,10 @@ export default function ProjectPage(){
   const removeListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',idx:number)=> updateGoal({[key]:toArray(goalData[key]).filter((_:any,i:number)=>i!==idx)} as any)
 
   if(!project) return <div className='card'>Проект не найден</div>
-  return <div className='workspace-grid'>
-    <aside className='card'>
-      <div className='sub'>Текущий проект</div>
-      <div className='project-pick'>{project.project_name}</div>
-      <h4>Этапы Discovery</h4>
-      <div className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></div>
-      <div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div>
-      {tabs.map(t=>{const s=cmp?.sections?.find((x:any)=>x.artifact_type===t.type)?.status||'not_started'; return <div key={t.type} className={`sidebar-item ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{s==='completed'?<CheckCircle2 size={15} color='#22c55e'/>:s==='in_progress'?<Circle size={15} color='#2563eb'/>:<Circle size={15} color='#9ca3af'/>}<span>{t.label}</span></div>})}
-    </aside>
-
+  return <div className='workspace-single'>
     <section>
       <div className='card' style={{marginBottom:12}}>
+        <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div></div></div>
         <div className='stage-tabs'>{tabs.map(t=>{const s=cmp?.sections?.find((x:any)=>x.artifact_type===t.type)?.status||'not_started'; return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}</button>})}</div>
       </div>
 

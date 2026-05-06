@@ -99,3 +99,6 @@ body{background:#f8fafc}
 .project-header{border-radius:0;box-shadow:none}
 .stage-pill{font-weight:600}
 .stage-pill.active{border:1px solid #93c5fd;background:#fff}
+.workspace-single{display:block}
+.top-progress{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:10px}
+.top-progress .progress{width:260px;margin-top:4px}
