@@ -72,13 +72,25 @@ const workflowStages = [
 
 const detectLinkType=(url:string)=>{const u=url.toLowerCase(); if(u.includes('jira')) return 'Jira'; if(u.includes('confluence')) return 'Confluence'; if(u.includes('figma')) return 'Figma'; if(u.includes('draw.io')) return 'Draw.io'; if(u.includes('swagger')) return 'Swagger'; if(u.includes('superset')) return 'Superset'; if(u.includes('kibana')) return 'Kibana'; if(u.includes('bi')) return 'BI'; return 'Другое'}
 
-const sourceIcon=(name:string)=>{const n=name.toLowerCase(); if(n.includes('.pdf')) return '📄'; if(n.includes('.doc')) return '📘'; if(n.includes('.xls')) return '📗'; if(n.includes('jira')) return '🛠'; if(n.includes('confluence')) return '✖'; if(n.includes('figma')) return '🎨'; if(n.includes('bi')) return '◉'; return '•'}
+const sourceIcon=(name:string)=>{const n=name.toLowerCase(); if(n.includes('.pdf')) return '📄'; if(n.includes('.doc')) return '📘'; if(n.includes('.xls')) return '📗'; if(n.includes('jira')) return '↗'; if(n.includes('confluence')) return '✣'; if(n.includes('figma')) return '◔'; if(n.includes('bi')) return '◉'; return '•'}
+
+const demoDocs=[
+  {name:'BRD_Автопролонгация_ИБС_v1.0.pdf',size:'12.4 MB',date:'06.05.2026'},
+  {name:'Описание процесса пролонгации ИБС.docx',size:'2.1 MB',date:'06.05.2026'},
+  {name:'Отчет по обращениям клиентов.xlsx',size:'1.3 MB',date:'06.05.2026'}
+]
+const demoLinks=[
+  {url:'Jira: SFA-12345 Автопролонгация ИБС',type:'Jira'},
+  {url:'Confluence: Процесс пролонгации ИБС',type:'Confluence'},
+  {url:'Figma: Прототип экрана',type:'Figma'},
+  {url:'BI Dashboard: Просрочки ИБС',type:'Superset'}
+]
 
 export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
   const [cmp,setCmp]=useState<any>(null); const [msg,setMsg]=useState(''); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
-  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
+  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
 
   const loadCompletion=async()=>setCmp(await api<any>(`/projects/${projectId}/completion`).catch(()=>null))
@@ -158,15 +170,15 @@ export default function ProjectPage(){
             <input className='input' placeholder='Связанные системы' value={contextInput.related_systems} onChange={e=>setContextInput({...contextInput,related_systems:e.target.value})}/>
           </div>
           <div className='context-center card'>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4><button className='btn primary' onClick={runContextAnalyze} disabled={thinking}>{thinking?'Индексация...':'Загрузить файлы'}</button></div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4></div>
             <div className='sources-card'>
-              <div className='sources-head'><b>Документы ({Array.isArray(documents)?documents.length:0})</b><label className='btn'>Загрузить файлы<input type='file' multiple style={{display:'none'}} onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'Проиндексирован'})); setDocuments([...(documents||[]),...files])}}/></label></div>
-              <div className='sources-list'>{Array.isArray(documents) ? documents.map((d:any,i:number)=><div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(safeText(d?.name||''))}</span><div><div className='source-title'>{safeText(d?.name)}</div><div className='sub'>{formatFileSize(d?.size)} • Загружен {safeText(d?.created_at ? new Date(d.created_at).toLocaleDateString('ru-RU') : '—')}</div></div></div><span className='status-green'>Проиндексирован</span></div>) : <div className='sub'>Файлы не загружены</div>}</div>
+              <div className='sources-head'><b>Документы ({(Array.isArray(documents)&&documents.length)?documents.length:3})</b><label className='btn'>Загрузить файлы<input type='file' multiple style={{display:'none'}} onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'Проиндексирован'})); setDocuments([...(documents||[]),...files])}}/></label></div>
+              <div className='sources-list'>{(Array.isArray(documents)&&documents.length?documents:demoDocs).map((d:any,i:number)=><div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(safeText(d?.name||''))}</span><div><div className='source-title'>{safeText(d?.name)}</div><div className='source-meta'>{d.size?d.size:formatFileSize(d?.size)} • Загружен {safeText(d?.date || (d?.created_at ? new Date(d.created_at).toLocaleDateString('ru-RU') : '06.05.2026'))}</div></div></div><span className='status-green'>Проиндексирован</span></div>)}</div>
             </div>
             <div className='sources-card'>
-              <b>Ссылки ({Array.isArray(links)?links.length:0})</b>
-              <div className='sources-list'>{Array.isArray(links) ? links.map((l:any,i)=>{let item:any=l; try{item=typeof l==='string' && l.startsWith('{')?JSON.parse(l):l}catch{} const title=safeText(item?.url||l); const type=safeText(item?.type||detectLinkType(title)); return <div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(type)}</span><div className='source-title'>{title}</div></div><span className='sub source-type'>{type}</span></div>}) : <div className='sub'>Ссылок нет</div>}</div>
-              <div className='sources-add'><input className='input' placeholder='Добавить ссылку...' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); (e.target as HTMLInputElement).value=''}}}}/><button className='btn primary' onClick={()=>setMsg('Введите ссылку и нажмите Enter')}>Добавить</button></div>
+              <b>Ссылки ({(Array.isArray(links)&&links.length)?links.length:4})</b>
+              <div className='sources-list'>{((Array.isArray(links)&&links.length)?links:demoLinks).map((l:any,i)=>{let item:any=l; try{item=typeof l==='string' && l.startsWith('{')?JSON.parse(l):l}catch{} const title=safeText(item?.url||l); const type=safeText(item?.type||detectLinkType(title)); return <div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(type)}</span><div className='source-title'>{title}</div></div><span className='sub source-type'>{type}</span></div>})}</div>
+              <div className='sources-add'><input className='input' placeholder='Добавить ссылку...' value={linkDraft} onChange={e=>setLinkDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=linkDraft.trim(); if(v){setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); setLinkDraft('')}}}}/><button className='btn primary' onClick={()=>{const v=linkDraft.trim(); if(!v) return; setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); setLinkDraft('')}}>Добавить</button></div>
             </div>
           </div>
           <div className='context-right card'>

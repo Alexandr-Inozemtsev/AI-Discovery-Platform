@@ -113,3 +113,28 @@ body{background:#f8fafc}
 .source-type{font-weight:600;color:#6b7280}
 .sources-add{display:flex;gap:8px}
 .sources-add .input{flex:1}
+.sources-card{background:#fff;border-color:#e8edf5}
+.sources-card b{font-size:31px/2;color:#1f2a44}
+.sources-head .btn{height:34px;padding:0 14px;border:1px solid #bcd0ff;background:#f8fbff;color:#3b63d1}
+.source-row{padding:12px 10px;border:0;border-bottom:1px solid #eef2f7;border-radius:0;background:transparent}
+.source-row:last-child{border-bottom:none}
+.source-ico{background:#eef4ff;color:#3b63d1;width:28px;height:28px;border-radius:10px}
+.status-green{background:#dff7e9;color:#2f9f69;font-weight:700}
+.sources-add{margin-top:4px}
+.sources-add .btn.primary{background:#e8efff;border-color:#d2dfff;color:#3b63d1}
+.sources-add .input{background:#fbfcff}
+/* pixel-match sources block */
+.context-center>div:first-child h4{font-size:34px/2;font-weight:700}
+.sources-card{border-radius:16px;padding:14px 14px 12px;gap:12px}
+.sources-head{margin-bottom:2px}
+.sources-head b{font-size:32px/2}
+.sources-list{gap:0}
+.source-row{height:62px;padding:10px 4px 10px 2px}
+.source-title{font-size:16px;max-width:390px}
+.source-meta{font-size:13px;color:#64748b;font-weight:600}
+.source-ico{width:30px;height:30px;border-radius:9px;font-size:14px}
+.source-type{font-size:28px/2;min-width:88px;text-align:right;color:#98a2b3}
+.status-green{font-size:13px;padding:6px 12px;background:#e8f8ee;color:#2d9f61}
+.sources-add{margin-top:10px}
+.sources-add .input{height:46px;border-radius:14px;font-size:28px/2;padding:0 14px}
+.sources-add .btn{height:46px;border-radius:14px;min-width:106px}
