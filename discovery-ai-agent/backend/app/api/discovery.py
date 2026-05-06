@@ -161,6 +161,8 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
 
     has_api_key = bool(api_key and not str(api_key).startswith('********'))
     key_tail = (api_key[-4:] if has_api_key else 'none')
+    if provider != 'mock' and not has_api_key:
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'config', 'response_body': 'API key is empty', 'has_api_key': False, 'key_tail': key_tail})
     body = {'model': model, 'messages': [{'role': 'user', 'content': 'ping'}], 'max_tokens': 20, 'temperature': float(src.get('temperature') or (saved.temperature if saved else 0.2))}
     req = request.Request(
         url=endpoint,
