@@ -21,8 +21,10 @@ class ProjectRead(BaseModel):
 class ArtifactWrite(BaseModel):
     content: str = ""
     structured_content: dict[str, Any] | None = None
+    rich_content_json: dict[str, Any] | None = None
+    rendered_html: str | None = None
 class ArtifactRead(BaseModel):
-    id: str; project_id: str; artifact_type: ArtifactType; content: str; structured_content: dict[str, Any] | None; version: int; created_at: datetime; updated_at: datetime
+    id: str; project_id: str; artifact_type: ArtifactType; content: str; structured_content: dict[str, Any] | None; rich_content_json: dict[str, Any] | None; rendered_html: str | None; version: int; created_at: datetime; updated_at: datetime
     class Config: from_attributes = True
 class CompletionSection(BaseModel):
     artifact_type: ArtifactType

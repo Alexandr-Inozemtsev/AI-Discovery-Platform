@@ -29,6 +29,10 @@ def startup() -> None:
         names = {c[1] for c in cols}
         if "structured_content" not in names:
             conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN structured_content JSON"))
+        if "rich_content_json" not in names:
+            conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rich_content_json JSON"))
+        if "rendered_html" not in names:
+            conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rendered_html TEXT"))
 
 
 app.include_router(discovery_router)

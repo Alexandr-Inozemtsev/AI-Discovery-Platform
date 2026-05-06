@@ -7,6 +7,8 @@ from app.db.session import get_db
 from app.models.discovery import ArtifactType
 from app.repositories import discovery as repo
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
+from app.services.docx_export_service import build_docx
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = AgentOrchestrator()
@@ -59,7 +61,7 @@ def get_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Dep
 def put_artifact(project_id: str, artifact_type: ArtifactType, payload: ArtifactWrite, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Project not found')
-    return repo.upsert_artifact(db, project_id, artifact_type, payload.content, payload.structured_content)
+    return repo.upsert_artifact(db, project_id, artifact_type, payload.content, payload.structured_content, payload.rich_content_json, payload.rendered_html)
 
 @router.post('/projects/{project_id}/generate/{artifact_type}', response_model=ArtifactRead)
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
@@ -99,3 +101,11 @@ def completion(project_id: str, db: Session = Depends(get_db)):
         sections.append(CompletionSection(artifact_type=ArtifactType(t), title=title, status=status, is_required=req, version=(a.version if a else 0)))
     pct = int((req_done/req_total)*100) if req_total else 0
     return CompletionResponse(completion_percent=pct, sections=sections, required_sections_total=req_total, required_sections_completed=req_done, missing_sections=missing)
+
+
+@router.get('/projects/{project_id}/export/docx')
+def export_docx(project_id: str, db: Session = Depends(get_db)):
+    p = repo.get_project(db, project_id)
+    if not p: raise HTTPException(404, 'Project not found')
+    bio = build_docx(p, repo.list_artifacts(db, project_id))
+    return StreamingResponse(bio, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers={'Content-Disposition': f'attachment; filename=BT_{project_id}.docx'})

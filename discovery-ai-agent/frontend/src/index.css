@@ -46,3 +46,5 @@ body { margin:0; font-family: Inter, Segoe UI, Arial, sans-serif; background:var
 @media(max-width:1100px){.workspace-grid{grid-template-columns:1fr}.goal-layout{grid-template-columns:1fr}}
 button.nav-item{width:100%;border:none;background:transparent;text-align:left;font:inherit}
 button.pipe-item{border:none;background:transparent;padding:0;cursor:pointer;color:inherit}
+.toolbar{position:sticky;top:0;display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px;background:#fff;border-bottom:1px solid var(--border);margin-bottom:8px}
+.editor-content{min-height:240px;padding:8px}.editor-content .ProseMirror{min-height:220px;outline:none;line-height:1.6}

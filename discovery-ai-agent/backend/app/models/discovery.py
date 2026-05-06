@@ -67,6 +67,8 @@ class DiscoveryArtifact(Base):
     artifact_type: Mapped[ArtifactType] = mapped_column(Enum(ArtifactType), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     structured_content: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    rich_content_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    rendered_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
