@@ -89,27 +89,36 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     if not p:
         raise HTTPException(404, 'Проект не найден')
     context_input = payload.get('context_input') or {}
+    links = payload.get('links') or []
+    documents = payload.get('documents') or []
     existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     prompt = (
-        'Ты senior BA assistant. Верни ТОЛЬКО JSON без markdown. '
-        'Структура: {"summary":"","business_context":"","problem_statement":"","stakeholders":[],"systems":[],"processes":[],"risks":[],"questions":[],"recommendations":[],"hypothesis":"","completeness_score":0,"missing":[],"detected_entities":{}}. '
-        f'Project: {p.project_name}. Context input: {json.dumps(context_input, ensure_ascii=False)}'
+        'Верни только JSON и строго на русском языке. '
+        'Это этап ingestion, без рисков/рекомендаций/гипотез/TO-BE. '
+        'Структура JSON: '
+        '{"процессы":[],"системы":[],"роли":[],"интеграции":[],"kpi":[],"бизнес_сущности":[],"документы":[],"термины":[],"покрытие":{"документы":false,"системы":false,"процессы":false,"bpmn":false,"kpi":false,"sla":false}}. '
+        f'Проект: {p.project_name}. Overview: {json.dumps(context_input, ensure_ascii=False)}. '
+        f'Ссылки: {json.dumps(links, ensure_ascii=False)}. Документы: {json.dumps(documents, ensure_ascii=False)}'
     )
     llm = create_llm(db)
     raw = llm.generate(prompt)
-    data = _json_from_llm_response(raw)
-    if not data:
+    extracted = _json_from_llm_response(raw)
+    if not extracted:
         raise HTTPException(400, 'LLM вернул некорректный JSON')
-    history = (existing.structured_content or {}).get('analysis_history', []) if existing else []
-    history.append({'created_at': str(time.time()), 'analysis': data})
+    history = (existing.structured_content or {}).get('knowledge_history', []) if existing else []
+    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links}
+    history.append(snapshot)
     structured = {
         'context_input': context_input,
-        'ai_analysis': data,
-        'analysis_history': history[-20:],
+        'documents': documents,
+        'links': links,
+        'extracted_knowledge': extracted,
+        'knowledge_history': history[-30:],
+        'indexing_status': 'completed'
     }
-    content = data.get('summary') or (existing.content if existing else '')
+    content = existing.content if existing else ''
     repo.upsert_artifact(db, project_id, ArtifactType.CONTEXT, content, structured_content=structured)
-    return {'ok': True, 'analysis': data, 'history_count': len(history)}
+    return {'ok': True, 'extracted_knowledge': extracted, 'history_count': len(history), 'indexing_status': 'completed'}
 
 @router.post('/projects/{project_id}/generate/{artifact_type}', response_model=ArtifactRead)
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):

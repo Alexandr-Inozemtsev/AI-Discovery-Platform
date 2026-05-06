@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Download, MoreHorizontal, Copy, RefreshCcw } from 'lucide-react'
+import { CheckCircle2, Circle, Download, MoreHorizontal, Database, RefreshCcw } from 'lucide-react'
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -22,12 +22,12 @@ export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
   const [cmp,setCmp]=useState<any>(null); const [msg,setMsg]=useState(''); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
-  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [analysis,setAnalysis]=useState<any>(null); const [thinking,setThinking]=useState(false)
+  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false)
   const current=tabs.find(t=>t.type===active)
 
   const loadCompletion=async()=>setCmp(await api<any>(`/projects/${projectId}/completion`).catch(()=>null))
   const load=async()=>{try{setProject(await api<Project>(`/projects/${projectId}`)); await loadCompletion()}catch{setMsg('Проект не найден')}}
-  const loadArtifact=async(type:ArtifactType)=>{try{const a=await api<any>(`/projects/${projectId}/artifacts/${type}`);setContent(a.rendered_html||a.content||'');setRichJson(a.rich_content_json||null);setStructured(a.structured_content||{});setVer(a.version);setUpdated(a.updated_at); if(type==='CONTEXT'){setContextInput(a.structured_content?.context_input||emptyInput); setAnalysis(a.structured_content?.ai_analysis||null)}}catch{setContent('');setRichJson(null);setStructured({});setVer(null);setUpdated(''); if(type==='CONTEXT'){setContextInput(emptyInput); setAnalysis(null)}}}
+  const loadArtifact=async(type:ArtifactType)=>{try{const a=await api<any>(`/projects/${projectId}/artifacts/${type}`);setContent(a.rendered_html||a.content||'');setRichJson(a.rich_content_json||null);setStructured(a.structured_content||{});setVer(a.version);setUpdated(a.updated_at); if(type==='CONTEXT'){setContextInput(a.structured_content?.context_input||emptyInput); setDocuments(a.structured_content?.documents||[]); setLinks(a.structured_content?.links||[]); setKnowledge(a.structured_content?.extracted_knowledge||null)}}catch{setContent('');setRichJson(null);setStructured({});setVer(null);setUpdated(''); if(type==='CONTEXT'){setContextInput(emptyInput); setDocuments([]); setLinks([]); setKnowledge(null)}}}
   useEffect(()=>{load(); if(projectId) localStorage.setItem('lastOpenedProjectId', projectId)},[projectId]);
   useEffect(()=>{const st = searchParams.get('stage') as ArtifactType | null; if(st && tabs.some(t=>t.type===st)) setActive(st)},[searchParams]);
   useEffect(()=>{loadArtifact(active); if(projectId) navigate(`/projects/${projectId}?stage=${active}`, { replace:true })},[active,projectId])
@@ -39,9 +39,8 @@ export default function ProjectPage(){
   useEffect(()=>{if(active!=='CONTEXT') return; const t=setTimeout(()=>{saveContextInput()},1000); return ()=>clearTimeout(t)},[contextInput])
 
 
-  const saveContextInput=async()=>{try{setSaving('saving'); await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:analysis?.summary||content||'',structured_content:{context_input:contextInput,ai_analysis:analysis,analysis_history:structured?.analysis_history||[]}})}); setSaving('saved')}catch{setSaving('error')}}
-  const runContextAnalyze=async()=>{try{setThinking(true); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput})}); setAnalysis(r.analysis); setMsg('AI-анализ обновлен'); await loadArtifact('CONTEXT')}catch{setMsg('Ошибка AI-анализа')}finally{setThinking(false)}}
-  const copyTxt=(v:any)=>navigator.clipboard?.writeText(typeof v==='string'?v:JSON.stringify(v,null,2))
+  const saveContextInput=async()=>{try{setSaving('saving'); await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:content||'',structured_content:{context_input:contextInput,documents,links,extracted_knowledge:knowledge,knowledge_history:structured?.knowledge_history||[],indexing_status:'idle'}})}); setSaving('saved')}catch{setSaving('error')}}
+  const runContextAnalyze=async()=>{try{setThinking(true); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents,links})}); setKnowledge(r.extracted_knowledge); setMsg('Индексация знаний завершена'); await loadArtifact('CONTEXT')}catch{setMsg('Ошибка индексации')}finally{setThinking(false)}}
 
   const smartToText=(s:any)=>`Цель проекта (SMART):\n${s.goal_text||''}\n\nS: ${s.specific||''}\nM: ${s.measurable||''}\nA: ${s.achievable||''}\nR: ${s.relevant||''}\nT: ${s.time_bound||''}`
   const bind=(k:string,ph:string)=><input className='input' placeholder={ph} value={structured[k]||''} onChange={e=>setStructured({...structured,[k]:e.target.value})}/>
@@ -70,32 +69,24 @@ export default function ProjectPage(){
 
         {active==='CONTEXT' ? <div className='context-workspace'>
           <div className='context-left card'>
-            <h4>Input / Source Data</h4>
+            <h4>Обзор</h4>
             <input className='input' placeholder='Название инициативы' value={contextInput.initiative_name} onChange={e=>setContextInput({...contextInput,initiative_name:e.target.value})}/>
-            <textarea className='textarea' placeholder='Краткое описание идеи' value={contextInput.idea_summary} onChange={e=>setContextInput({...contextInput,idea_summary:e.target.value})}/>
-            <textarea className='textarea' placeholder='Бизнес-контекст' value={contextInput.business_context} onChange={e=>setContextInput({...contextInput,business_context:e.target.value})}/>
-            <textarea className='textarea' placeholder='Что болит сейчас' value={contextInput.pain_points} onChange={e=>setContextInput({...contextInput,pain_points:e.target.value})}/>
-            <input className='input' placeholder='Какие процессы затронуты' value={contextInput.impacted_processes} onChange={e=>setContextInput({...contextInput,impacted_processes:e.target.value})}/>
-            <input className='input' placeholder='Какие системы затронуты' value={contextInput.impacted_systems} onChange={e=>setContextInput({...contextInput,impacted_systems:e.target.value})}/>
+            <textarea className='textarea' placeholder='Краткое описание' value={contextInput.idea_summary} onChange={e=>setContextInput({...contextInput,idea_summary:e.target.value})}/>
+            <input className='input' placeholder='Цель инициативы' value={contextInput.business_context} onChange={e=>setContextInput({...contextInput,business_context:e.target.value})}/>
+            <input className='input' placeholder='Бизнес-направление' value={contextInput.pain_points} onChange={e=>setContextInput({...contextInput,pain_points:e.target.value})}/>
+            <input className='input' placeholder='Владелец процесса' value={contextInput.impacted_processes} onChange={e=>setContextInput({...contextInput,impacted_processes:e.target.value})}/>
+            <input className='input' placeholder='Владелец Discovery' value={contextInput.impacted_systems} onChange={e=>setContextInput({...contextInput,impacted_systems:e.target.value})}/>
           </div>
           <div className='context-center card'>
-            <div style={{display:'flex',justifyContent:'space-between'}}><h4>AI Workspace</h4><button className='btn primary' onClick={runContextAnalyze} disabled={thinking}>{thinking?'AI думает...':'Обновить AI-анализ'}</button></div>
-            {!analysis && <p className='sub'>Заполните входные данные и запустите анализ.</p>}
-            {analysis && <div className='ai-sections'>
-              <div className='card'><b>AI Summary</b><p>{analysis.summary}</p></div>
-              <div className='card'><b>AI Questions</b><ul>{(analysis.questions||[]).map((q:string,i:number)=><li key={i}>{q}</li>)}</ul></div>
-              <div className='card'><b>AI Detected Entities</b><div className='timeline'>{[...(analysis.systems||[]),...(analysis.processes||[]),...(analysis.stakeholders||[])].map((x:string,i:number)=><span key={i} className='chip in_progress'>{x}</span>)}</div></div>
-              <div className='card'><b>AI Risks</b><ul>{(analysis.risks||[]).map((r:string,i:number)=><li key={i}>{r}</li>)}</ul></div>
-              <div className='card'><b>AI Recommendations</b><ul>{(analysis.recommendations||[]).map((r:string,i:number)=><li key={i}>{r}</li>)}</ul></div>
-              <div className='card'><b>Context completeness: {analysis.completeness_score||0}%</b><div className='progress'><div style={{width:`${analysis.completeness_score||0}%`}}/></div></div>
-              <div className='card'><div style={{display:'flex',justifyContent:'space-between'}}><b>AI Generated Hypothesis</b><div><button className='btn' onClick={()=>copyTxt(analysis.hypothesis)}><Copy size={14}/></button><button className='btn' onClick={runContextAnalyze}><RefreshCcw size={14}/></button></div></div><p>{analysis.hypothesis}</p></div>
-            </div>}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4><button className='btn primary' onClick={runContextAnalyze} disabled={thinking}>{thinking?'Индексация...':'Запустить индексацию'}</button></div>
+            <div className='card'><b>Документы</b><div className='sub'>Drag & Drop (метаданные на этом этапе)</div><input type='file' multiple onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'в очереди'})); setDocuments([...(documents||[]),...files])}}/></div>
+            <div className='ai-sections'>{(documents||[]).map((d:any,i:number)=><div key={i} className='card'><b>{d.name}</b><div className='sub'>{d.type} • {Math.round((d.size||0)/1024)} KB • {d.ai_status||'—'}</div></div>)}</div>
+            <div className='card'><b>Ссылки</b><input className='input' placeholder='Вставьте URL и нажмите Enter' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),v]); (e.target as HTMLInputElement).value=''}}}}/><div className='timeline'>{links.map((l,i)=><span key={i} className='chip in_progress'>{l}</span>)}</div></div>
           </div>
           <div className='context-right card'>
-            <h4>Artifacts & History</h4>
-            <div className='sub'>История AI-анализов: {(structured?.analysis_history||[]).length}</div>
-            <div className='sub'>Последние изменения: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</div>
-            <div className='sub'>Загруженные файлы: {contextInput.files.length}</div>
+            <h4><Database size={16}/> Извлечённые знания</h4>
+            {knowledge ? <div className='ai-sections'>{['процессы','системы','роли','интеграции','kpi','бизнес_сущности','документы','термины'].map((k)=><div className='card' key={k}><b>{k}</b><div className='timeline'>{(knowledge[k]||[]).map((x:string,i:number)=><span key={i} className='chip in_progress'>{x}</span>)}</div></div>)}<div className='card'><b>Покрытие знаний</b><ul>{Object.entries(knowledge.покрытие||{}).map(([k,v]:any)=><li key={k}>{v?'✔':'✖'} {k}</li>)}</ul></div></div> : <p className='sub'>После индексации здесь появятся извлечённые знания.</p>}
+            <button className='btn' onClick={runContextAnalyze}><RefreshCcw size={14}/> Переиндексировать</button>
           </div>
         </div> : active==='GOAL' ? <div className='goal-layout'>
           <div>
