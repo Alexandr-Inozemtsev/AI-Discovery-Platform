@@ -1,4 +1,4 @@
-import { Download, MoreHorizontal, Database, RefreshCcw } from 'lucide-react'
+import { Download, MoreHorizontal, Database, RefreshCcw, FileText, FileSpreadsheet, File, Link2, Figma } from 'lucide-react'
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -72,7 +72,7 @@ const workflowStages = [
 
 const detectLinkType=(url:string)=>{const u=url.toLowerCase(); if(u.includes('jira')) return 'Jira'; if(u.includes('confluence')) return 'Confluence'; if(u.includes('figma')) return 'Figma'; if(u.includes('draw.io')) return 'Draw.io'; if(u.includes('swagger')) return 'Swagger'; if(u.includes('superset')) return 'Superset'; if(u.includes('kibana')) return 'Kibana'; if(u.includes('bi')) return 'BI'; return 'Другое'}
 
-const sourceIcon=(name:string)=>{const n=name.toLowerCase(); if(n.includes('.pdf')) return '📄'; if(n.includes('.doc')) return '📘'; if(n.includes('.xls')) return '📗'; if(n.includes('jira')) return '↗'; if(n.includes('confluence')) return '✣'; if(n.includes('figma')) return '◔'; if(n.includes('bi')) return '◉'; return '•'}
+const sourceIcon=(name:string)=>{const n=name.toLowerCase(); if(n.includes('.pdf')) return 'pdf'; if(n.includes('.doc')) return 'doc'; if(n.includes('.xls')) return 'xls'; if(n.includes('jira')) return 'jira'; if(n.includes('confluence')) return 'confluence'; if(n.includes('figma')) return 'figma'; if(n.includes('bi')) return 'bi'; return 'default'}
 
 const demoDocs=[
   {name:'BRD_Автопролонгация_ИБС_v1.0.pdf',size:'12.4 MB',date:'06.05.2026'},
@@ -173,11 +173,11 @@ export default function ProjectPage(){
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4></div>
             <div className='sources-card'>
               <div className='sources-head'><b>Документы ({(Array.isArray(documents)&&documents.length)?documents.length:3})</b><label className='btn'>Загрузить файлы<input type='file' multiple style={{display:'none'}} onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'Проиндексирован'})); setDocuments([...(documents||[]),...files])}}/></label></div>
-              <div className='sources-list'>{(Array.isArray(documents)&&documents.length?documents:demoDocs).map((d:any,i:number)=><div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(safeText(d?.name||''))}</span><div><div className='source-title'>{safeText(d?.name)}</div><div className='source-meta'>{d.size?d.size:formatFileSize(d?.size)} • Загружен {safeText(d?.date || (d?.created_at ? new Date(d.created_at).toLocaleDateString('ru-RU') : '06.05.2026'))}</div></div></div><span className='status-green'>Проиндексирован</span></div>)}</div>
+              <div className='sources-list'>{(Array.isArray(documents)&&documents.length?documents:demoDocs).map((d:any,i:number)=><div key={i} className='source-row'><div className='source-main'><span className={`source-ico ${sourceIcon(safeText(d?.name||''))}`}>{sourceIcon(safeText(d?.name||''))==='xls'?<FileSpreadsheet size={14}/>:sourceIcon(safeText(d?.name||''))==='doc'?<FileText size={14}/>:<File size={14}/>}</span><div><div className='source-title'>{safeText(d?.name)}</div><div className='source-meta'>{d.size?d.size:formatFileSize(d?.size)} • Загружен {safeText(d?.date || (d?.created_at ? new Date(d.created_at).toLocaleDateString('ru-RU') : '06.05.2026'))}</div></div></div><span className='status-green'>Проиндексирован</span></div>)}</div>
             </div>
             <div className='sources-card'>
               <b>Ссылки ({(Array.isArray(links)&&links.length)?links.length:4})</b>
-              <div className='sources-list'>{((Array.isArray(links)&&links.length)?links:demoLinks).map((l:any,i)=>{let item:any=l; try{item=typeof l==='string' && l.startsWith('{')?JSON.parse(l):l}catch{} const title=safeText(item?.url||l); const type=safeText(item?.type||detectLinkType(title)); return <div key={i} className='source-row'><div className='source-main'><span className='source-ico'>{sourceIcon(type)}</span><div className='source-title'>{title}</div></div><span className='sub source-type'>{type}</span></div>})}</div>
+              <div className='sources-list'>{((Array.isArray(links)&&links.length)?links:demoLinks).map((l:any,i)=>{let item:any=l; try{item=typeof l==='string' && l.startsWith('{')?JSON.parse(l):l}catch{} const title=safeText(item?.url||l); const type=safeText(item?.type||detectLinkType(title)); return <div key={i} className='source-row'><div className='source-main'><span className={`source-ico ${sourceIcon(type)}`}>{sourceIcon(type)==='figma'?<Figma size={14}/>:<Link2 size={14}/>}</span><div className='source-title'>{title}</div></div><span className='sub source-type'>{type}</span></div>})}</div>
               <div className='sources-add'><input className='input' placeholder='Добавить ссылку...' value={linkDraft} onChange={e=>setLinkDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=linkDraft.trim(); if(v){setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); setLinkDraft('')}}}}/><button className='btn primary' onClick={()=>{const v=linkDraft.trim(); if(!v) return; setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); setLinkDraft('')}}>Добавить</button></div>
             </div>
           </div>
