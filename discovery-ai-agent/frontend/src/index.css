@@ -42,3 +42,7 @@ button.nav-item,button.pipe-item{font:inherit}
 .problem-workspace{display:grid;grid-template-columns:.9fr 1.5fr .9fr;gap:12px;margin-top:12px}
 .problem-left,.problem-center,.problem-right{display:flex;flex-direction:column;gap:10px}
 @media(max-width:1300px){.problem-workspace{grid-template-columns:1fr}}
+
+.goal-engine-layout{display:grid;grid-template-columns:1.05fr 1fr .7fr;gap:12px;margin-top:12px}
+.impact-col{display:flex;flex-direction:column;gap:8px}
+@media(max-width:1300px){.goal-engine-layout{grid-template-columns:1fr}}

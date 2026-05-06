@@ -7,6 +7,29 @@ import { ArtifactType, Project } from '../types/discovery'
 
 
 
+
+
+type GoalMetric = { metric:string; currentValue?:string; targetValue:string }
+type SmartKey = 'specific'|'measurable'|'achievable'|'relevant'|'timeBound'
+type SmartState = { status:'ok'|'warning'|'error'; comment:string; recommendation:string }
+type GoalDraft = {
+  id:string; title:string; businessProblem:string; desiredOutcome:string; businessImportance:string; noActionImpact:string;
+  businessValue:{fteSaving?:number; revenueImpact?:number; riskReduction?:string; operationalEffect?:string};
+  successMetrics:GoalMetric[]; nonGoals:string[]; assumptions:string[]; risks:string[]; constraints:string[]; stakeholders:string[];
+  priority:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL'; status:'DRAFT'|'AI_GENERATED'|'VALIDATED'|'APPROVED';
+  aiSummary?:string; aiRecommendations?:string[]; aiQuestions?:string[]; aiContradictions?:string[]; aiDetectedProblems?:string[];
+  smartAnalysis?:Record<SmartKey,SmartState>; completeness?:number; linkedProblems?:string[]; linkedRequirements?:string[]; linkedUseCases?:string[];
+  affectedSections?:string[]; history?:Array<{changedAt:string; changedBy:string; action:string}>; createdAt:string; updatedAt:string
+}
+
+const emptyGoal = ():GoalDraft => ({
+  id: crypto.randomUUID(), title:'', businessProblem:'', desiredOutcome:'', businessImportance:'', noActionImpact:'', businessValue:{},
+  successMetrics:[], nonGoals:[], assumptions:[], risks:[], constraints:[], stakeholders:[], priority:'MEDIUM', status:'DRAFT',
+  aiRecommendations:[], aiQuestions:[], aiContradictions:[], aiDetectedProblems:[], linkedProblems:[], linkedRequirements:[], linkedUseCases:[], affectedSections:[], history:[],
+  smartAnalysis:{specific:{status:'warning',comment:'Недостаточно данных',recommendation:'Уточните формулировку'}, measurable:{status:'warning',comment:'Нет KPI',recommendation:'Добавьте метрики'}, achievable:{status:'warning',comment:'Не описаны ограничения',recommendation:'Укажите ограничения'}, relevant:{status:'warning',comment:'Не отражена бизнес-ценность',recommendation:'Добавьте бизнес-эффект'}, timeBound:{status:'error',comment:'Не указан срок',recommendation:'Добавьте целевую дату'}},
+  completeness:0, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+})
+
 type ContextInput = {
   initiative_name:string; short_description:string; initiative_goal:string; business_domain:string; process_owner:string; discovery_owner:string; related_processes:string; related_systems:string;
 }
@@ -63,7 +86,7 @@ export default function ProjectPage(){
   useEffect(()=>{const st = searchParams.get('stage') as ArtifactType | null; if(st && tabs.some(t=>t.type===st)) setActive(st)},[searchParams]);
   useEffect(()=>{loadArtifact(active); if(projectId) navigate(`/projects/${projectId}?stage=${active}`, { replace:true })},[active,projectId])
 
-  const save=async()=>{try{setSaving('saving');const payload=active==='GOAL'?{content:smartToText(structured),structured_content:structured,rich_content_json:richJson,rendered_html:content}:active==='CONTEXT'?{content:'',structured_content:buildContextPayload(),rich_content_json:null,rendered_html:null}:{content,structured_content:null,rich_content_json:richJson,rendered_html:content}; const a=await api<any>(`/projects/${projectId}/artifacts/${active}`,{method:'PUT',body:JSON.stringify(payload)});setVer(a.version);setUpdated(a.updated_at);setMsg('Сохранено');setSaving('saved');await loadCompletion()}catch{setMsg('Ошибка сохранения');setSaving('error')}}
+  const save=async()=>{try{setSaving('saving');const payload=active==='GOAL'?{content:smartToText(goalData),structured_content:goalData,rich_content_json:richJson,rendered_html:content}:active==='CONTEXT'?{content:'',structured_content:buildContextPayload(),rich_content_json:null,rendered_html:null}:{content,structured_content:null,rich_content_json:richJson,rendered_html:content}; const a=await api<any>(`/projects/${projectId}/artifacts/${active}`,{method:'PUT',body:JSON.stringify(payload)});setVer(a.version);setUpdated(a.updated_at);setMsg('Сохранено');setSaving('saved');await loadCompletion()}catch{setMsg('Ошибка сохранения');setSaving('error')}}
   const gen=async()=>{try{setBusy(true);const a=await api<any>(`/projects/${projectId}/generate/${active}`,{method:'POST'});setContent(a.content);setStructured({});setVer(a.version);setUpdated(a.updated_at);setMsg('Генерация завершена');await loadCompletion()}catch{setMsg('Ошибка сохранения')}finally{setBusy(false)}}
   const validate=async()=>{try{setBusy(true);await api<any>(`/projects/${projectId}/validate`,{method:'POST'});setMsg('Сохранено');await loadCompletion()}catch{setMsg('Ошибка сохранения')}finally{setBusy(false)}}
   useEffect(()=>{if(active==='GOAL' || active==='CONTEXT' || active==='PROBLEM') return; if(!content) return; const t=setTimeout(()=>{save()},2000); return ()=>clearTimeout(t)},[content])
@@ -99,8 +122,12 @@ export default function ProjectPage(){
   const askProblem=async()=>{try{setThinking(true); const r=await api<any>(`/projects/${projectId}/problem/ask`,{method:'POST',body:JSON.stringify({message:problemChat,draft:problemDraft})}); setProblemPatch(r.patch); setProblemDraft({...problemDraft, ai_chat_history:[...(problemDraft.ai_chat_history||[]),{role:'user',text:problemChat},{role:'assistant',text:r.assistant_message}]}); setProblemChat('')}catch{setMsg('Ошибка AI уточнения')}finally{setThinking(false)}}
   const applyPatch=async()=>{if(!problemPatch) return; try{const r=await api<any>(`/projects/${projectId}/problem/apply-patch`,{method:'POST',body:JSON.stringify({patch:{...problemDraft,...problemPatch},status:'needs_clarification'})}); setProblemDraft(r.structured_content||problemDraft); setProblemPatch(null); setMsg('Изменения применены')}catch{setMsg('Ошибка применения изменений')}}
 
-  const smartToText=(s:any)=>`Цель проекта (SMART):\n${s.goal_text||''}\n\nS: ${s.specific||''}\nM: ${s.measurable||''}\nA: ${s.achievable||''}\nR: ${s.relevant||''}\nT: ${s.time_bound||''}`
-  const bind=(k:string,ph:string)=><input className='input' placeholder={ph} value={structured[k]||''} onChange={e=>setStructured({...structured,[k]:e.target.value})}/>
+  const smartToText=(goal:GoalDraft)=>`Цель инициативы: ${goal.title}\nПроблема: ${goal.businessProblem}\nЖелаемый результат: ${goal.desiredOutcome}\nKPI: ${(goal.successMetrics||[]).map(m=>`${m.metric}: ${m.currentValue||'—'} -> ${m.targetValue}`).join('; ')}`
+  const toArray=(v:any)=>Array.isArray(v)?v:[]
+  const updateGoal=(patch:Partial<GoalDraft>)=>setStructured({...goalData,...patch,updatedAt:new Date().toISOString()})
+  const goalData:GoalDraft = { ...emptyGoal(), ...(structured||{}) }
+  const addListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',val:string)=>{ if(!val.trim()) return; updateGoal({[key]:[...toArray(goalData[key]),val.trim()] } as any) }
+  const removeListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',idx:number)=> updateGoal({[key]:toArray(goalData[key]).filter((_:any,i:number)=>i!==idx)} as any)
 
   if(!project) return <div className='card'>Проект не найден</div>
   return <div className='workspace-grid'>
@@ -151,22 +178,17 @@ export default function ProjectPage(){
           <div className='problem-left card'><h4>Контекст для анализа</h4><div className='sub'>{contextInput.initiative_name}</div><div className='sub'>{contextInput.short_description}</div><div className='sub'>Процессы: {safeText((knowledge?.процессы||knowledge?.processes||[]).slice(0,5))}</div><div className='sub'>Системы: {safeText((knowledge?.системы||knowledge?.systems||[]).slice(0,5))}</div><div className='sub'>Роли: {safeText((knowledge?.роли||knowledge?.roles||[]).slice(0,5))}</div><button className='btn' onClick={()=>loadArtifact('CONTEXT')}>Обновить из контекста</button>{problemDraft.source_context_version && ver && problemDraft.source_context_version<ver ? <div className='card'><p className='sub'>Контекст изменился. Рекомендуется обновить анализ проблемы.</p><button className='btn' onClick={generateProblem}>Обновить проблему по новому контексту</button></div>:null}</div>
           <div className='problem-center card'><h4>Формулировка проблемы</h4><textarea className='textarea' placeholder='В чём проблема?' value={problemDraft.main_problem||''} onChange={e=>setProblemDraft({...problemDraft,main_problem:e.target.value})}/><label className='sub'>Problem Statement</label><textarea className='textarea' value={problemDraft.problem_statement||''} onChange={e=>setProblemDraft({...problemDraft,problem_statement:e.target.value})}/><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className='btn primary' onClick={generateProblem} disabled={thinking}>{thinking?'Генерация...':'Сгенерировать'}</button><button className='btn' onClick={generateProblem}>Перегенерировать</button><button className='btn' onClick={()=>saveProblem()}>Сохранить</button><button className='btn' onClick={()=>saveProblem('ready')}>Принять как финальную проблему</button><button className='btn' onClick={()=>{const v=(problemDraft.versions||[]).slice(-1)[0]?.snapshot; if(v) setProblemDraft({...problemDraft,...v})}}>Вернуть предыдущую версию</button></div><div className='sub'>Статус: {safeText(problemDraft.status||'draft')}</div></div>
           <div className='problem-right card'><h4>AI уточняющие вопросы</h4><div className='ai-sections'>{(problemDraft.ai_chat_history||[]).map((m:any,i:number)=><div key={i} className='card'><b>{m.role==='user'?'Вы':'AI'}</b><div className='sub'>{safeText(m.text)}</div></div>)}</div><input className='input' placeholder='Ответьте AI...' value={problemChat} onChange={e=>setProblemChat(e.target.value)}/><button className='btn' onClick={askProblem}>Отправить</button>{problemPatch && <div className='card'><div className='sub'>AI предлагает изменения.</div><div style={{display:'flex',gap:8}}><button className='btn primary' onClick={applyPatch}>Применить</button><button className='btn' onClick={()=>setProblemPatch(null)}>Отклонить</button><button className='btn' onClick={()=>setMsg('Частичное применение доступно в следующем релизе')}>Применить частично</button></div></div>}</div>
-        </div> : active==='GOAL' ? <div className='goal-layout'>
-          <div>
-            <label className='sub'>Цель проекта (SMART)</label>
-            <textarea className='textarea' value={structured.goal_text||''} onChange={e=>setStructured({...structured,goal_text:e.target.value})}/>
-            <div className='goal-grid'>
-              {bind('specific','S — Specific / Конкретность')}
-              {bind('measurable','M — Measurable / Измеримость')}
-              {bind('achievable','A — Achievable / Достижимость')}
-              {bind('relevant','R — Relevant / Значимость')}
-              {bind('time_bound','T — Time-bound / Срок')}
-            </div>
+        </div> : active==='GOAL' ? <div className='goal-engine-layout'>
+          <div className='card'>
+            <h4>Business Goal Input</h4>
+            <input className='input' placeholder='Название инициативы' value={goalData.title} onChange={e=>updateGoal({title:e.target.value})}/>
+            <textarea className='textarea' style={{minHeight:90}} placeholder='Какую проблему решаем?' value={goalData.businessProblem} onChange={e=>updateGoal({businessProblem:e.target.value})}/>
+            <textarea className='textarea' style={{minHeight:90}} placeholder='Что изменится после внедрения?' value={goalData.desiredOutcome} onChange={e=>updateGoal({desiredOutcome:e.target.value})}/>
+            <textarea className='textarea' style={{minHeight:90}} placeholder='Почему это важно бизнесу?' value={goalData.businessImportance} onChange={e=>updateGoal({businessImportance:e.target.value})}/>
+            <textarea className='textarea' style={{minHeight:90}} placeholder='Что произойдет если ничего не делать?' value={goalData.noActionImpact} onChange={e=>updateGoal({noActionImpact:e.target.value})}/>
           </div>
-          <div>
-            <div className='card' style={{marginBottom:10}}><h4 style={{marginTop:0}}>Что нужно сделать?</h4><p className='sub'>Заполните SMART-структуру: цель должна быть конкретной, измеримой, достижимой, значимой и ограниченной по сроку.</p></div>
-            <div className='card'><h4 style={{marginTop:0}}>Подсказка</h4><p className='sub'>Используйте количественные KPI, чтобы этап автоматически перешёл в «заполнено».</p></div>
-          </div>
+          <div className='card'><h4>AI Goal Engine</h4><div className='ai-sections'><div className='card'><b>AI Summary</b><p className='sub'>{goalData.aiSummary||'После запуска AI-анализа здесь появится краткая сводка.'}</p></div><div className='card'><b>SMART-анализ</b>{Object.entries(goalData.smartAnalysis||{}).map(([k,v]:any)=><div key={k} className='sub'>{v.status==='ok'?'✅':v.status==='warning'?'⚠️':'❌'} {k}: {v.comment}. Рекомендация: {v.recommendation}</div>)}</div><div className='card'><b>AI Questions</b>{toArray(goalData.aiQuestions).map((q:string,i:number)=><div key={i} className='sub'>• {q}</div>)}</div><div className='card'><b>AI Contradictions</b>{toArray(goalData.aiContradictions).map((q:string,i:number)=><div key={i} className='sub'>• {q}</div>)}</div><div className='card'><b>Completeness: {goalData.completeness||0}%</b><div className='progress'><div style={{width:`${goalData.completeness||0}%`}}/></div></div></div></div>
+          <div className='card'><h4>Impact Map</h4><div className='impact-col'><button className='btn'>Цель</button><button className='btn'>Проблемы</button><button className='btn'>Гипотезы</button><button className='btn'>Требования</button><button className='btn'>Use Cases</button><button className='btn'>BT Sections</button></div></div>
         </div> : <div style={{marginTop:14}}><h4 style={{margin:'0 0 6px'}}>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}
         {active==='CONTEXT' && <div className='card' style={{marginTop:12}}><b>Контекст изменён. Это может повлиять на разделы:</b><ul><li>Проблема</li><li>Цель</li><li>AS IS</li><li>TO BE</li><li>Требования</li><li>Риски</li><li>Финальный БТ</li></ul><div style={{display:'flex',gap:8}}><button className='btn' onClick={()=>setMsg('Помечено: требует обновления')}>Обновить зависимые разделы</button><button className='btn' onClick={()=>setMsg('Изменения контекста доступны для просмотра')}>Посмотреть изменения</button><button className='btn' onClick={()=>setMsg('Оставлено как есть')}>Оставить как есть</button></div></div>}
         <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Как работает Discovery в платформе</h4><div className='flow-grid'>{workflowStages.map(([key,text],idx)=><div key={key} className={`flow-step ${active===key?'active':''}`}><b>{idx+1}. {tabs.find(t=>t.type===key)?.label}</b><p className='sub'>{text}</p></div>)}</div><p className='sub'>AI постоянно использует контекст на всех этапах и обновляет артефакты при изменениях.</p></div>
