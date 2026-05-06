@@ -22,7 +22,7 @@ class _OpenAICompat(BaseLLMClient):
     def generate(self, prompt: str) -> str:
         payload = {
             'model': self.model,
-            'messages': [{'role': 'system', 'content': 'Ты assistant для Discovery.'}, {'role': 'user', 'content': prompt}],
+            'messages': [{'role': 'system', 'content': 'Ты assistant для Discovery. Всегда отвечай строго на русском языке.'}, {'role': 'user', 'content': prompt}],
             'temperature': self.temperature,
         }
         req = request.Request(
