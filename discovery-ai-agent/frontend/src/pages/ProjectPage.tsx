@@ -33,6 +33,22 @@ const tabs:{label:string;type:ArtifactType;desc:string}[]=[
 {label:'Бизнес-эффект',type:'BUSINESS_EFFECT',desc:'Качественные и количественные эффекты.'},{label:'AS IS',type:'AS_IS',desc:'Текущее состояние.'},{label:'TO BE',type:'TO_BE',desc:'Целевое состояние.'},
 {label:'Use Cases',type:'USE_CASES',desc:'Ключевые сценарии пользователей.'},{label:'Требования',type:'FUNCTIONAL_REQUIREMENTS',desc:'Функциональные требования.'},{label:'Риски',type:'RISKS',desc:'Риски и меры.'},{label:'Финальный БТ',type:'FINAL_BT',desc:'Финальная бизнес-требование спецификация.'}]
 
+
+const workflowStages = [
+  ['CONTEXT','Вы загружаете материалы и ссылки, описываете инициативу. AI индексирует и извлекает знания.'],
+  ['PROBLEM','AI анализирует контекст и помогает сформулировать проблему, боли и корневые причины.'],
+  ['GOAL','Определяем SMART-цель, метрики успеха и критерии результата.'],
+  ['BUSINESS_EFFECT','AI помогает посчитать ожидаемый эффект: FTE, риски, скорость, доход, качество.'],
+  ['AS_IS','AI строит текущий процесс на основе документов и извлечённых знаний.'],
+  ['TO_BE','AI предлагает целевой процесс и варианты автоматизации.'],
+  ['USE_CASES','AI формирует сценарии, negative flows и edge cases.'],
+  ['FUNCTIONAL_REQUIREMENTS','AI помогает оформить функциональные и нефункциональные требования.'],
+  ['RISKS','AI выявляет риски, зависимости, ограничения и rollback.'],
+  ['FINAL_BT','AI собирает всё в единый бизнес-документ.']
+] as const
+
+const detectLinkType=(url:string)=>{const u=url.toLowerCase(); if(u.includes('jira')) return 'Jira'; if(u.includes('confluence')) return 'Confluence'; if(u.includes('figma')) return 'Figma'; if(u.includes('draw.io')) return 'Draw.io'; if(u.includes('swagger')) return 'Swagger'; if(u.includes('superset')) return 'Superset'; if(u.includes('kibana')) return 'Kibana'; if(u.includes('bi')) return 'BI'; return 'Другое'}
+
 export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
@@ -97,7 +113,7 @@ export default function ProjectPage(){
 
       <div className='card'>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:8}}>
-          <div><button className='btn' onClick={async()=>{if(active==='CONTEXT'){await saveContextInput(); if(saving==='error'){setMsg('Ошибка сохранения. Данные не отправлены'); return}} else {await save()} navigate('/')}}>← К списку проектов</button><h2 style={{margin:'10px 0 4px'}}>{current?.label}</h2><p className='sub' style={{margin:0}}>{current?.desc}</p></div>
+          <div><button className='btn' onClick={async()=>{if(active==='CONTEXT'){await saveContextInput(); if(saving==='error'){setMsg('Ошибка сохранения. Данные не отправлены'); return}} else {await save()} navigate('/')}}>← К списку проектов</button><h2 style={{margin:'10px 0 4px'}}>{current?.label}</h2><p className='sub' style={{margin:0}}>{project.project_name} · В работе · Версия {ver??0} · Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</p></div>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span className='sub'>Версия: {ver??0}</span><span className='sub'>Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</span><button className='btn primary' onClick={save}>Сохранить</button><button className='btn' onClick={gen} disabled={busy}>Сгенерировать</button><button className='btn' onClick={validate} disabled={busy}>Проверить</button><a className='btn' href={`http://localhost:8000/api/projects/${projectId}/export/docx`}><Download size={16}/></a><button className='btn'><MoreHorizontal size={16}/></button></div>
         </div>
 
@@ -117,11 +133,11 @@ export default function ProjectPage(){
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4><button className='btn primary' onClick={runContextAnalyze} disabled={thinking}>{thinking?'Индексация...':'Запустить индексацию'}</button></div>
             <div className='card'><b>Документы</b><div className='sub'>Drag & Drop (метаданные на этом этапе)</div><input type='file' multiple onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'в очереди'})); setDocuments([...(documents||[]),...files])}}/></div>
             <div className='ai-sections'>{Array.isArray(documents) ? documents.map((d:any,i:number)=><div key={i} className='card'><div><b>Название:</b> {safeText(d?.name)}</div><div><b>Тип:</b> {safeText(d?.type || '—')}</div><div><b>Размер:</b> {formatFileSize(d?.size)}</div><div><b>Статус AI:</b> {safeText(d?.ai_status || 'в очереди')}</div><div><b>Дата загрузки:</b> {safeText(d?.created_at ? new Date(d.created_at).toLocaleString('ru-RU') : '—')}</div></div>) : []}</div>
-            <div className='card'><b>Ссылки</b><input className='input' placeholder='Вставьте URL и нажмите Enter' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),v]); (e.target as HTMLInputElement).value=''}}}}/><div className='timeline'>{Array.isArray(links) ? links.map((l,i)=><span key={i} className='chip in_progress'>{safeText(l)}</span>) : []}</div></div>
+            <div className='card'><b>Ссылки</b><input className='input' placeholder='Добавить ссылку' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),JSON.stringify({url:v,type:detectLinkType(v),status:'Добавлено, ожидает обработки',created_at:new Date().toISOString()})]); (e.target as HTMLInputElement).value=''}}}}/><div className='ai-sections'>{Array.isArray(links) ? links.map((l:any,i)=>{let item:any=l; try{item=typeof l==='string' && l.startsWith('{')?JSON.parse(l):l}catch{} return <div key={i} className='card'><div><b>{safeText(item?.type||detectLinkType(safeText(l)))}</b></div><div className='sub'>{safeText(item?.url||l)}</div><div className='sub'>{safeText(item?.status||'Добавлено, ожидает обработки')} · {safeText(item?.created_at?new Date(item.created_at).toLocaleString('ru-RU'):'')}</div></div>}) : []}</div></div>
           </div>
           <div className='context-right card'>
-            <h4><Database size={16}/> Извлечённые знания</h4>
-            {knowledge ? <div className='ai-sections'>{['процессы','системы','роли','интеграции','kpi','бизнес_сущности','документы','термины'].map((k)=><div className='card' key={k}><b>{k}</b><div className='timeline'>{Array.isArray(knowledge[k]) ? knowledge[k].map((x:any,i:number)=><span key={i} className='chip in_progress'>{safeText(x)}</span>) : []}</div></div>)}<div className='card'><b>Покрытие знаний</b><ul>{Object.entries(knowledge.покрытие||{}).map(([k,v]:any)=><li key={k}>{v?'✔':'✖'} {k}</li>)}</ul></div></div> : <p className='sub'>После индексации здесь появятся извлечённые знания.</p>}
+            <h4><Database size={16}/> Извлечённые знания (AI)</h4><div style={{display:'flex',gap:8,marginBottom:8}}><button className='btn' onClick={runContextAnalyze}>Обновить извлечение</button><button className='btn' onClick={()=>setMsg('Показаны все извлечённые знания')}>Показать все извлечённые знания</button><button className='btn' onClick={()=>setMsg('Скопировано в следующий этап')}>Скопировать в следующий этап</button></div>
+            {knowledge ? <div className='ai-sections'>{['процессы','системы','роли','интеграции','kpi','бизнес_сущности','документы','термины'].map((k)=><div className='card' key={k}><b>{k}</b><div className='timeline'>{Array.isArray(knowledge[k]) ? knowledge[k].map((x:any,i:number)=><span key={i} className='chip in_progress'>{safeText(x)}</span>) : []}</div></div>)}<div className='card'><b>Покрытие знаний</b><ul>{Object.entries(knowledge?.покрытие||knowledge?.coverage||{}).map(([k,v]:any)=><li key={k}>{safeText(v)} — {k}</li>)}</ul><div className='sub'>Что ещё можно добавить: BPMN, KPI, SLA, ограничения, Jira/Confluence/Figma ссылки.</div></div></div> : <p className='sub'>После индексации здесь появятся извлечённые знания.</p>}
             <button className='btn' onClick={runContextAnalyze}><RefreshCcw size={14}/> Переиндексировать</button>
           </div>
         </div> : active==='GOAL' ? <div className='goal-layout'>
@@ -141,6 +157,9 @@ export default function ProjectPage(){
             <div className='card'><h4 style={{marginTop:0}}>Подсказка</h4><p className='sub'>Используйте количественные KPI, чтобы этап автоматически перешёл в «заполнено».</p></div>
           </div>
         </div> : <div style={{marginTop:14}}><h4 style={{margin:'0 0 6px'}}>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}
+        {active==='CONTEXT' && <div className='card' style={{marginTop:12}}><b>Контекст изменён. Это может повлиять на разделы:</b><ul><li>Проблема</li><li>Цель</li><li>AS IS</li><li>TO BE</li><li>Требования</li><li>Риски</li><li>Финальный БТ</li></ul><div style={{display:'flex',gap:8}}><button className='btn' onClick={()=>setMsg('Помечено: требует обновления')}>Обновить зависимые разделы</button><button className='btn' onClick={()=>setMsg('Изменения контекста доступны для просмотра')}>Посмотреть изменения</button><button className='btn' onClick={()=>setMsg('Оставлено как есть')}>Оставить как есть</button></div></div>}
+        <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Как работает Discovery в платформе</h4><div className='flow-grid'>{workflowStages.map(([key,text],idx)=><div key={key} className={`flow-step ${active===key?'active':''}`}><b>{idx+1}. {tabs.find(t=>t.type===key)?.label}</b><p className='sub'>{text}</p></div>)}</div><p className='sub'>AI постоянно использует контекст на всех этапах и обновляет артефакты при изменениях.</p></div>
+        <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Как AI помогает на каждом этапе</h4><p className='sub'>Источники: документы, ссылки, ручное описание.</p><p className='sub'>AI делает: извлекает процессы, системы, роли, интеграции, термины.</p><p className='sub'>Человек делает: проверяет, дополняет, подтверждает корректность.</p><button className='btn primary' onClick={()=>setActive('PROBLEM')}>Перейти к следующему этапу</button></div>
         <div className='sub'>Autosave: {saving==='saving'?'Сохранение…':saving==='saved'?'Сохранено':saving==='error'?'Ошибка сохранения':'—'}</div>
         {msg && <p className={`sub ${msg==='Сохранено' || msg==='Генерация завершена' ? '' : ''}`}>{msg}</p>}
       </div>

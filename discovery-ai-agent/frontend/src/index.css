@@ -35,3 +35,7 @@ button.nav-item,button.pipe-item{font:inherit}
 .context-center{position:relative}
 .context-center .card:first-of-type{position:sticky;top:8px;z-index:2}
 .context-right .card ul{margin:8px 0 0 16px;padding:0}
+.flow-grid{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:8px}
+.flow-step{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
+.flow-step.active{border-color:#2563eb;background:#eff6ff}
+@media(max-width:1300px){.flow-grid{grid-template-columns:1fr 1fr}}
