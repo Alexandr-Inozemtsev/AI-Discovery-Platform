@@ -4,8 +4,9 @@ import { NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } fro
 import './index.css'
 import './App.css'
 import ProjectsPage from './pages/ProjectsPage'
+import HomePage from './pages/HomePage'
 import ProjectPage from './pages/ProjectPage'
-import LLMSettingsPage from './pages/LLMSettingsPage'
+import SettingsPage from './pages/SettingsPage'
 import { api } from './api/client'
 
 const workspace:[string,string,any][] = [
@@ -41,8 +42,8 @@ export default function App() {
     <aside className='sidebar'>
       <div className='logo'>AI Discovery Platform</div>
       <NavLink to='/' className={({isActive})=>`nav-item ${isActive?'active':''}`}><House size={16}/>Главная</NavLink>
-      <NavLink to='/' className='nav-item'><FolderKanban size={16}/>Проекты</NavLink>
-      <NavLink to='/settings/llm' className={({isActive})=>`nav-item ${isActive?'active':''}`}><Settings size={16}/>LLM настройки</NavLink>
+      <NavLink to='/projects' className={({isActive})=>`nav-item ${isActive?'active':''}`}><FolderKanban size={16}/>Проекты</NavLink>
+      <NavLink to='/settings/llm' className={({isActive})=>`nav-item ${isActive?'active':''}`}><Settings size={16}/>Настройки</NavLink>
       <div className='card' style={{background:'rgba(255,255,255,.06)',borderColor:'rgba(148,163,184,.25)',color:'#cbd5e1',padding:'10px 12px'}}>
         <div className='sub' style={{color:'#94a3b8'}}>Текущий проект</div>
         <div style={{fontWeight:700,color:'#fff'}}>{currentProjectId || 'Не выбран'}</div>
@@ -61,15 +62,16 @@ export default function App() {
 
     <main className='main'>
       <div className='topbar'>
-        <div><span className='status-ok' style={{background:ok?'var(--success)':'#ef4444'}}/>Backend: {ok?'подключен':'недоступен'} · LLM: {llm.provider} / {llm.model||'-'}</div>
+        <div><span className='status-ok' style={{background:ok?'var(--success)':'#ef4444'}}/>Backend: {ok?'подключен':'недоступен'} · LLM: {llm.provider} / {llm.model||'-'}{llm.last_actual_model ? ` → ${llm.last_actual_model}` : ''}</div>
         <div style={{display:'flex',alignItems:'center',gap:12}}><CircleHelp size={18}/><Bell size={18}/><div style={{width:30,height:30,borderRadius:999,background:'#dbeafe',display:'grid',placeItems:'center',fontWeight:700}}>A</div><strong>Александр</strong></div>
       </div>
       {msg && <div className='card' style={{marginBottom:10,color:'#b45309'}}>{msg}</div>}
       <div className='content'>
         <Routes>
-          <Route path='/' element={<ProjectsPage />} />
+          <Route path='/' element={<HomePage />} />
+          <Route path='/projects' element={<ProjectsPage />} />
           <Route path='/projects/:projectId' element={<ProjectPage />} />
-          <Route path='/settings/llm' element={<LLMSettingsPage />} />
+          <Route path='/settings/*' element={<SettingsPage />} />
         </Routes>
       </div>
     </main>

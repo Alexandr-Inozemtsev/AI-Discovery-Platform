@@ -13,6 +13,7 @@ from app.services.docx_export_service import build_docx
 from fastapi.responses import StreamingResponse
 import json
 from urllib import request, error
+import time
 
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = None
@@ -129,7 +130,8 @@ def get_llm_settings(db: Session = Depends(get_db)):
         return {'provider':'mock','base_url':'https://openrouter.ai/api/v1','api_key':'','model':'deepseek/deepseek-chat-v3-0324:free','timeout_seconds':120,'temperature':0.2,'is_active':True}
     key = s.api_key or ''
     masked = ('********' + key[-4:]) if key else ''
-    return {'provider':s.provider,'base_url':s.base_url,'api_key':masked,'model':s.model,'timeout_seconds':s.timeout_seconds,'temperature':s.temperature,'is_active':s.is_active}
+    history = db.query(LLMSettings).filter(LLMSettings.last_error.isnot(None)).order_by(LLMSettings.id.desc()).limit(5).all()
+    return {'provider':s.provider,'base_url':s.base_url,'api_key':masked,'model':s.model,'timeout_seconds':s.timeout_seconds,'temperature':s.temperature,'is_active':s.is_active,'last_connection_status':s.last_connection_status,'last_latency_ms':s.last_latency_ms,'last_error':s.last_error,'last_actual_model':s.last_actual_model,'key_tail':(key[-4:] if key else 'none'),'error_history':[{'time':str(x.updated_at),'error':x.last_error} for x in history]}
 
 @router.put('/settings/llm')
 def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
@@ -138,7 +140,7 @@ def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
     api_key = old.api_key if old else None
     if incoming and not str(incoming).startswith('********') and not str(incoming).strip()=='':
         api_key = incoming
-    s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True)
+    s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True, last_connection_status=(old.last_connection_status if old else None), last_latency_ms=(old.last_latency_ms if old else None), last_error=(old.last_error if old else None), last_actual_model=(old.last_actual_model if old else None))
     db.add(s); db.commit(); db.refresh(s)
     return {'ok': True}
 
@@ -157,13 +159,15 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
         api_key = incoming_key
 
     if provider == 'mock':
-        return {'ok': True, 'provider': 'mock', 'endpoint': 'mock://local', 'model': model}
+        s = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='mock', last_latency_ms=0, last_error=None, last_actual_model=model)
+        db.add(s); db.commit()
+        return {'ok': True, 'provider': 'mock', 'endpoint': 'mock://local', 'model': model, 'status':'mock', 'latency_ms':0}
 
     has_api_key = bool(api_key and not str(api_key).startswith('********'))
     key_tail = (api_key[-4:] if has_api_key else 'none')
     if provider != 'mock' and not has_api_key:
         raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'config', 'response_body': 'API key is empty', 'has_api_key': False, 'key_tail': key_tail})
-    body = {'model': model, 'messages': [{'role': 'user', 'content': 'ping'}], 'max_tokens': 20, 'temperature': float(src.get('temperature') or (saved.temperature if saved else 0.2))}
+    body = {'model': model, 'messages': [{'role': 'user', 'content': 'ping'}], 'max_tokens': int(src.get('max_tokens') or 20), 'temperature': float(src.get('temperature') or (saved.temperature if saved else 0.2))}
     req = request.Request(
         url=endpoint,
         data=json.dumps(body).encode(),
@@ -176,11 +180,22 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
         }
     )
     try:
+        started = time.time()
         with request.urlopen(req, timeout=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120))) as resp:
             data = json.loads(resp.read().decode())
-            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'has_api_key': has_api_key, 'key_tail': key_tail, 'message': str(data)[:160]}
+            actual_model = data.get('model') or model
+            latency_ms = int((time.time()-started)*1000)
+            srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='connected', last_latency_ms=latency_ms, last_error=None, last_actual_model=actual_model)
+            db.add(srow); db.commit()
+            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'actual_model': actual_model, 'status':'connected', 'latency_ms':latency_ms, 'has_api_key': has_api_key, 'key_tail': key_tail, 'message': str(data)[:160]}
     except error.HTTPError as e:
         text = e.read().decode(errors='ignore')
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': e.code, 'response_body': text[:500], 'has_api_key': has_api_key, 'key_tail': key_tail})
+        if provider == 'openrouter' and model != 'openrouter/free':
+            return test_llm({**src, 'model': 'openrouter/free'}, db)
+        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='error', last_latency_ms=None, last_error=text[:500], last_actual_model=None)
+        db.add(srow); db.commit()
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'error', 'response_body': text[:500], 'has_api_key': has_api_key, 'key_tail': key_tail})
     except Exception as e:
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'network', 'response_body': str(e), 'has_api_key': has_api_key, 'key_tail': key_tail})
+        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='error', last_latency_ms=None, last_error=str(e)[:500], last_actual_model=None)
+        db.add(srow); db.commit()
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'error', 'response_body': str(e), 'has_api_key': has_api_key, 'key_tail': key_tail})
