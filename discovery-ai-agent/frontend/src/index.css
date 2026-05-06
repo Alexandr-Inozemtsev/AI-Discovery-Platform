@@ -86,3 +86,16 @@ body{background:#f8fafc}
 .logo{font-size:28px/2;line-height:1.2;border-radius:14px}
 .nav-item{font-size:15px/1.1}
 @media(max-width:1500px){.workspace-grid{grid-template-columns:1fr}.workspace-grid>aside.card{display:none}.context-workspace.refined{grid-template-columns:1fr 1fr}.ai-assistant{position:static;max-height:none}}
+
+.refined-content .card{background:#fff}
+.workspace-grid>section>.card:first-child{padding:10px 14px}
+.workspace-grid>section>.card:nth-child(2){padding:14px}
+.context-workspace.refined{grid-template-columns:1.05fr 1.55fr 1.2fr .9fr 1.05fr}
+.context-left.card,.context-center.card,.context-right.card,.context-coverage.card,.ai-assistant.card{padding:14px}
+.context-center .card,.context-right .card,.ai-assistant .card{background:#fcfdff}
+.sidebar.refined .nav-item{border-radius:10px;color:#dbe5ff}
+.sidebar.refined .nav-item.active{background:linear-gradient(90deg,#1d4ed8,#1e40af)}
+.section-title{color:#7f8ca8}
+.project-header{border-radius:0;box-shadow:none}
+.stage-pill{font-weight:600}
+.stage-pill.active{border:1px solid #93c5fd;background:#fff}
