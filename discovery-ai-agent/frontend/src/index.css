@@ -27,3 +27,18 @@
 button.nav-item,button.pipe-item{font:inherit}
 @media(max-width:1300px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.home-top{grid-template-columns:1fr}.content{width:100%;max-width:none}.workspace-grid{grid-template-columns:1fr}.goal-layout{grid-template-columns:1fr}}
 @media(max-width:1024px){.app-shell{grid-template-columns:1fr}.sidebar{display:none}}
+.context-workspace{display:grid;grid-template-columns:1fr 1.35fr .8fr;gap:12px;margin-top:12px}
+.context-left,.context-center,.context-right{display:flex;flex-direction:column;gap:10px}
+.context-left .textarea{min-height:110px}
+.ai-sections{display:flex;flex-direction:column;gap:10px}
+@media(max-width:1300px){.context-workspace{grid-template-columns:1fr}}
+.context-center{position:relative}
+.context-center .card:first-of-type{position:sticky;top:8px;z-index:2}
+.context-right .card ul{margin:8px 0 0 16px;padding:0}
+.flow-grid{display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:8px}
+.flow-step{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
+.flow-step.active{border-color:#2563eb;background:#eff6ff}
+@media(max-width:1300px){.flow-grid{grid-template-columns:1fr 1fr}}
+.problem-workspace{display:grid;grid-template-columns:.9fr 1.5fr .9fr;gap:12px;margin-top:12px}
+.problem-left,.problem-center,.problem-right{display:flex;flex-direction:column;gap:10px}
+@media(max-width:1300px){.problem-workspace{grid-template-columns:1fr}}

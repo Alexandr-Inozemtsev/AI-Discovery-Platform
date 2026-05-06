@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage'
 import ProjectPage from './pages/ProjectPage'
 import SettingsPage from './pages/SettingsPage'
 import { api } from './api/client'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const workspace:[string,string,any][] = [
   ['CONTEXT', 'Контекст', LayoutList], ['PROBLEM', 'Проблема', TriangleAlert], ['GOAL', 'Цель', Target], ['BUSINESS_EFFECT', 'Бизнес-эффект', Gauge],
@@ -70,7 +71,7 @@ export default function App() {
         <Routes>
           <Route path='/' element={<HomePage />} />
           <Route path='/projects' element={<ProjectsPage />} />
-          <Route path='/projects/:projectId' element={<ProjectPage />} />
+          <Route path='/projects/:projectId' element={<ErrorBoundary fallbackTitle='Ошибка экрана проекта'><ProjectPage /></ErrorBoundary>} />
           <Route path='/settings/*' element={<SettingsPage />} />
         </Routes>
       </div>
