@@ -27,3 +27,8 @@
 button.nav-item,button.pipe-item{font:inherit}
 @media(max-width:1300px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.home-top{grid-template-columns:1fr}.content{width:100%;max-width:none}.workspace-grid{grid-template-columns:1fr}.goal-layout{grid-template-columns:1fr}}
 @media(max-width:1024px){.app-shell{grid-template-columns:1fr}.sidebar{display:none}}
+.context-workspace{display:grid;grid-template-columns:1fr 1.35fr .8fr;gap:12px;margin-top:12px}
+.context-left,.context-center,.context-right{display:flex;flex-direction:column;gap:10px}
+.context-left .textarea{min-height:110px}
+.ai-sections{display:flex;flex-direction:column;gap:10px}
+@media(max-width:1300px){.context-workspace{grid-template-columns:1fr}}
