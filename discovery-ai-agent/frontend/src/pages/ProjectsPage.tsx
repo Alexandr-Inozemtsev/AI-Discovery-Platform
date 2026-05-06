@@ -1,12 +1,13 @@
 import { BarChart3, CheckCircle2, Clock3, FolderPlus, Plus, Rocket, UserCircle2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { Project } from '../types/discovery'
 
 const stages = ['Контекст','Проблема','Цель','Бизнес-эффект','AS IS','TO BE','Use Cases','Требования','Риски','Финальный БТ']
 
 export default function ProjectsPage(){
+  const navigate = useNavigate()
   const [projects,setProjects]=useState<Project[]>([]); const [name,setName]=useState(''); const [msg,setMsg]=useState(''); const [cmp,setCmp]=useState<Record<string,any>>({})
   const load=async()=>{try{const p=await api<Project[]>('/projects'); setProjects(p); const arr=await Promise.all(p.map(async x=>[x.id,await api<any>(`/projects/${x.id}/completion`).catch(()=>({completion_percent:0,sections:[]}))] as const)); setCmp(Object.fromEntries(arr))}catch{setMsg('Backend недоступен. Проверьте, что FastAPI запущен на http://localhost:8000')}}
   useEffect(()=>{load()},[])
@@ -29,8 +30,8 @@ export default function ProjectsPage(){
     </div>
 
     <div className='card' style={{marginBottom:16}}>
-      <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap'}}><h3 style={{margin:0}}>Этапы Discovery</h3><Link className='btn primary' to={projects[0]?`/projects/${projects[0].id}`:'#'}>Открыть рабочее пространство →</Link></div>
-      <div className='pipeline'>{stages.map((s,i)=>{const st=i<3?'completed':i<6?'in_progress':'not_started'; return <div key={s} className='pipe-item'><span className={`dot ${st}`}>{st==='completed'?'✓':''}</span><span>{s}</span></div>})}</div>
+      <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap'}}><h3 style={{margin:0}}>Этапы Discovery</h3><button className='btn primary' onClick={()=>{if(projects[0]) navigate(`/projects/${projects[0].id}?stage=CONTEXT`); else setMsg('Сначала создайте или откройте проект')}}>Открыть рабочее пространство →</button></div>
+      <div className='pipeline'>{stages.map((s,i)=>{const st=i<3?'completed':i<6?'in_progress':'not_started'; const map:any={'Контекст':'CONTEXT','Проблема':'PROBLEM','Цель':'GOAL','Бизнес-эффект':'BUSINESS_EFFECT','AS IS':'AS_IS','TO BE':'TO_BE','Use Cases':'USE_CASES','Требования':'FUNCTIONAL_REQUIREMENTS','Риски':'RISKS','Финальный БТ':'FINAL_BT'}; return <button key={s} className='pipe-item' onClick={()=>{if(projects[0]) navigate(`/projects/${projects[0].id}?stage=${map[s]}`); else setMsg('Сначала создайте или откройте проект')}}><span className={`dot ${st}`}>{st==='completed'?'✓':''}</span><span>{s}</span></button>})}</div>
       <div className='legend'><span><i className='dot completed'/>Заполнено</span><span><i className='dot in_progress'/>В работе</span><span><i className='dot not_started'/>Не начато</span></div>
     </div>
 
