@@ -11,6 +11,8 @@ from app.repositories import discovery as repo
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.docx_export_service import build_docx
 from fastapi.responses import StreamingResponse
+import json
+from urllib import request, error
 
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = None
@@ -142,12 +144,38 @@ def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
 
 @router.post('/settings/llm/test')
 def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
+    src = payload or get_llm_settings(db)
+    provider = (src.get('provider') or 'mock').lower()
+    model = src.get('model') or 'deepseek/deepseek-chat-v3-0324:free'
+    base_url = (src.get('base_url') or 'https://openrouter.ai/api/v1').rstrip('/')
+    endpoint = base_url if base_url.endswith('/chat/completions') else f"{base_url}/chat/completions"
+    api_key = src.get('api_key')
+    if provider == 'mock':
+        return {'ok': True, 'provider': 'mock', 'endpoint': 'mock://local', 'model': model}
+    key_tail = (api_key[-4:] if api_key else 'none')
+    body = {
+        'model': model,
+        'messages': [{'role': 'user', 'content': 'ping'}],
+        'max_tokens': 20,
+        'temperature': float(src.get('temperature', 0.2) or 0.2),
+    }
+    req = request.Request(
+        url=endpoint,
+        data=json.dumps(body).encode(),
+        method='POST',
+        headers={
+            'Authorization': f"Bearer {api_key or ''}",
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'http://localhost',
+            'X-Title': 'AI Discovery Platform',
+        }
+    )
     try:
-        if payload:
-            temp = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=payload.get('api_key'), model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',120), temperature=payload.get('temperature',0.2), is_active=True)
-            db.add(temp); db.commit();
-        llm = create_llm(db)
-        text = llm.generate('Ответь одним словом: OK')
-        return {'ok': True, 'message': text[:120]}
+        with request.urlopen(req, timeout=int(src.get('timeout_seconds', 120) or 120)) as resp:
+            data = json.loads(resp.read().decode())
+            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'key_tail': key_tail, 'message': str(data)[:160]}
+    except error.HTTPError as e:
+        text = e.read().decode(errors='ignore')
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': e.code, 'response_body': text[:500], 'key_tail': key_tail})
     except Exception as e:
-        raise HTTPException(400, f'Ошибка подключения: {e}')
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'network', 'response_body': str(e), 'key_tail': key_tail})
