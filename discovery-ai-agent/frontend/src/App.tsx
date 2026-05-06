@@ -23,7 +23,12 @@ export default function App() {
     return m?.[1] || localStorage.getItem('lastOpenedProjectId') || ''
   }, [location.pathname])
 
-  useEffect(() => { fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)); api<any>('/settings/llm').then(setLlm).catch(()=>{}) }, [])
+  useEffect(() => {
+    const refresh = () => api<any>('/settings/llm').then(setLlm).catch(()=>{})
+    fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)); refresh()
+    window.addEventListener('llm-updated', refresh)
+    return () => window.removeEventListener('llm-updated', refresh)
+  }, [])
 
   const goStage = (stage: string) => {
     const pid = currentProjectId || localStorage.getItem('lastOpenedProjectId')

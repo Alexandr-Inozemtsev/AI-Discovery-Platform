@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +8,8 @@ from app.db.base import Base
 from sqlalchemy import text
 
 from app.db.session import engine
+from app.models.llm_settings import LLMSettings
+from app.db.session import SessionLocal
 
 app = FastAPI(title="AI Discovery Agent API")
 
@@ -33,6 +37,25 @@ def startup() -> None:
             conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rich_content_json JSON"))
         if "rendered_html" not in names:
             conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rendered_html TEXT"))
+
+    env_path = Path(__file__).resolve().parents[2] / '.env'
+    if not env_path.exists():
+        env_path.write_text("""LLM_PROVIDER=mock
+OPENROUTER_API_KEY=
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=deepseek/deepseek-chat-v3-0324:free
+LLM_TIMEOUT_SECONDS=120
+LLM_TEMPERATURE=0.2
+""")
+
+    session = SessionLocal()
+    try:
+        if not session.query(LLMSettings).first():
+            session.add(LLMSettings(provider='mock', base_url='https://openrouter.ai/api/v1', model='deepseek/deepseek-chat-v3-0324:free', api_key=None, timeout_seconds=120, temperature=0.2, is_active=True))
+            session.commit()
+    finally:
+        session.close()
+
 
 
 app.include_router(discovery_router)

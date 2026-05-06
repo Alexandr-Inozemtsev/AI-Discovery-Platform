@@ -72,7 +72,12 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
     orchestrator = AgentOrchestrator(create_llm(db))
     agent = orchestrator.get_agent(artifact_type.value)
     if not agent: raise HTTPException(400, 'Генерация для этого типа артефакта не поддерживается')
-    content = agent.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
+    try:
+        content = agent.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
+    except Exception as e:
+        if 'openrouter' in str(e).lower() or '401' in str(e) or 'timeout' in str(e).lower():
+            raise HTTPException(400, 'OpenRouter недоступен. Проверьте API key, модель и интернет-соединение.')
+        raise
     return repo.upsert_artifact(db, project_id, artifact_type, content, None)
 
 @router.post('/projects/{project_id}/validate', response_model=ArtifactRead)
@@ -119,24 +124,30 @@ def export_docx(project_id: str, db: Session = Depends(get_db)):
 def get_llm_settings(db: Session = Depends(get_db)):
     s = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
     if not s:
-        return {'provider':'mock','base_url':'','api_key':'','model':'','timeout_seconds':60,'temperature':0.2,'is_active':True}
+        return {'provider':'mock','base_url':'https://openrouter.ai/api/v1','api_key':'','model':'deepseek/deepseek-chat-v3-0324:free','timeout_seconds':120,'temperature':0.2,'is_active':True}
     key = s.api_key or ''
-    masked = key[:3] + '****' + key[-4:] if len(key) > 7 else ('****' if key else '')
+    masked = ('********' + key[-4:]) if key else ''
     return {'provider':s.provider,'base_url':s.base_url,'api_key':masked,'model':s.model,'timeout_seconds':s.timeout_seconds,'temperature':s.temperature,'is_active':s.is_active}
 
 @router.put('/settings/llm')
 def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
     old = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
-    api_key = payload.get('api_key') if payload.get('api_key') else (old.api_key if old else None)
+    incoming = payload.get('api_key')
+    api_key = old.api_key if old else None
+    if incoming and not str(incoming).startswith('********'):
+        api_key = incoming
     s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True)
     db.add(s); db.commit(); db.refresh(s)
     return {'ok': True}
 
 @router.post('/settings/llm/test')
-def test_llm(db: Session = Depends(get_db)):
+def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
     try:
+        if payload:
+            temp = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=payload.get('api_key'), model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',120), temperature=payload.get('temperature',0.2), is_active=True)
+            db.add(temp); db.commit();
         llm = create_llm(db)
-        text = llm.generate('Проверка подключения. Ответь OK.')
+        text = llm.generate('Ответь одним словом: OK')
         return {'ok': True, 'message': text[:120]}
     except Exception as e:
         raise HTTPException(400, f'Ошибка подключения: {e}')
