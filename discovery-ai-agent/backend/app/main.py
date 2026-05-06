@@ -13,7 +13,6 @@ from app.db.session import SessionLocal
 
 app = FastAPI(title="AI Discovery Agent API")
 
-# Русский комментарий: CORS для фронтенда Vite на локальном порту.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -23,11 +22,28 @@ app.add_middleware(
 )
 
 
+def ensure_llm_settings_schema() -> None:
+    expected = {
+        "last_connection_status": "TEXT",
+        "latency_ms": "INTEGER",
+        "last_latency_ms": "INTEGER",
+        "last_error": "TEXT",
+        "last_actual_model": "TEXT",
+        "last_checked_at": "DATETIME",
+        "actual_model": "TEXT",
+        "provider_response": "TEXT",
+    }
+    with engine.begin() as conn:
+        cols = conn.execute(text("PRAGMA table_info(llm_settings)")).fetchall()
+        names = {c[1] for c in cols}
+        for col, typ in expected.items():
+            if col not in names:
+                conn.execute(text(f"ALTER TABLE llm_settings ADD COLUMN {col} {typ}"))
+
+
 @app.on_event("startup")
 def startup() -> None:
-    # Русский комментарий: при старте автоматически создаём таблицы SQLite, если их ещё нет.
     Base.metadata.create_all(bind=engine)
-    # Русский комментарий: для старых локальных БД добавляем колонку structured_content без миграций.
     with engine.begin() as conn:
         cols = conn.execute(text("PRAGMA table_info(discovery_artifacts)")).fetchall()
         names = {c[1] for c in cols}
@@ -37,6 +53,8 @@ def startup() -> None:
             conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rich_content_json JSON"))
         if "rendered_html" not in names:
             conn.execute(text("ALTER TABLE discovery_artifacts ADD COLUMN rendered_html TEXT"))
+
+    ensure_llm_settings_schema()
 
     env_path = Path(__file__).resolve().parents[2] / '.env'
     if not env_path.exists():
@@ -55,7 +73,6 @@ LLM_TEMPERATURE=0.2
             session.commit()
     finally:
         session.close()
-
 
 
 app.include_router(discovery_router)
