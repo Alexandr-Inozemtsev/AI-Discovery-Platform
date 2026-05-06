@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 import json
 from urllib import request, error
 import time
+import re
 
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = None
@@ -35,6 +36,19 @@ def _has_values(val):
 def _existing_artifacts_map(db: Session, project_id: str):
     artifacts = repo.list_artifacts(db, project_id)
     return {a.artifact_type.value: {"content": a.content, "structured_content": a.structured_content} for a in artifacts}
+
+
+def _json_from_llm_response(raw: str) -> dict:
+    txt = (raw or '').strip()
+    if not txt:
+        return {}
+    try:
+        return json.loads(txt)
+    except Exception:
+        m = re.search(r"\{[\s\S]*\}", txt)
+        if not m:
+            return {}
+        return json.loads(m.group(0))
 
 @router.get('/projects', response_model=list[ProjectRead])
 def get_projects(db: Session = Depends(get_db)): return repo.list_projects(db)
@@ -67,6 +81,35 @@ def put_artifact(project_id: str, artifact_type: ArtifactType, payload: Artifact
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Project not found')
     return repo.upsert_artifact(db, project_id, artifact_type, payload.content, payload.structured_content, payload.rich_content_json, payload.rendered_html)
+
+
+@router.post('/projects/{project_id}/context/analyze')
+def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db)):
+    p = repo.get_project(db, project_id)
+    if not p:
+        raise HTTPException(404, 'Проект не найден')
+    context_input = payload.get('context_input') or {}
+    existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    prompt = (
+        'Ты senior BA assistant. Верни ТОЛЬКО JSON без markdown. '
+        'Структура: {"summary":"","business_context":"","problem_statement":"","stakeholders":[],"systems":[],"processes":[],"risks":[],"questions":[],"recommendations":[],"hypothesis":"","completeness_score":0,"missing":[],"detected_entities":{}}. '
+        f'Project: {p.project_name}. Context input: {json.dumps(context_input, ensure_ascii=False)}'
+    )
+    llm = create_llm(db)
+    raw = llm.generate(prompt)
+    data = _json_from_llm_response(raw)
+    if not data:
+        raise HTTPException(400, 'LLM вернул некорректный JSON')
+    history = (existing.structured_content or {}).get('analysis_history', []) if existing else []
+    history.append({'created_at': str(time.time()), 'analysis': data})
+    structured = {
+        'context_input': context_input,
+        'ai_analysis': data,
+        'analysis_history': history[-20:],
+    }
+    content = data.get('summary') or (existing.content if existing else '')
+    repo.upsert_artifact(db, project_id, ArtifactType.CONTEXT, content, structured_content=structured)
+    return {'ok': True, 'analysis': data, 'history_count': len(history)}
 
 @router.post('/projects/{project_id}/generate/{artifact_type}', response_model=ArtifactRead)
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
