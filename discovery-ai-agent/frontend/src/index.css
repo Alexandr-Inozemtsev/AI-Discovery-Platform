@@ -39,3 +39,6 @@ button.nav-item,button.pipe-item{font:inherit}
 .flow-step{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
 .flow-step.active{border-color:#2563eb;background:#eff6ff}
 @media(max-width:1300px){.flow-grid{grid-template-columns:1fr 1fr}}
+.problem-workspace{display:grid;grid-template-columns:.9fr 1.5fr .9fr;gap:12px;margin-top:12px}
+.problem-left,.problem-center,.problem-right{display:flex;flex-direction:column;gap:10px}
+@media(max-width:1300px){.problem-workspace{grid-template-columns:1fr}}

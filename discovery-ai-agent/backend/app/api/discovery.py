@@ -143,6 +143,60 @@ def validate_project(project_id: str, db: Session = Depends(get_db)):
     content = critic.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
     return repo.upsert_artifact(db, project_id, ArtifactType.VALIDATION_REPORT, content, None)
 
+
+
+def _default_problem_structured():
+    return {
+        'main_problem':'','user_pains':[],'business_pains':[],'root_causes':[],'consequences_if_not_solved':[],'evidence_signals':[],
+        'problem_statement':'','assumptions':[],'missing_information':[],'clarifying_questions':[],'ai_chat_history':[],
+        'versions':[],'status':'draft','source_context_version':0
+    }
+
+
+@router.post('/projects/{project_id}/problem/generate')
+def generate_problem(project_id: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    p = repo.get_project(db, project_id)
+    if not p: raise HTTPException(404, 'Проект не найден')
+    context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    if not context_art or not (context_art.structured_content or {}).get('context_input'):
+        raise HTTPException(400, 'Сначала заполните Контекст или загрузите источники знаний.')
+    problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
+    prev = (problem_art.structured_content or _default_problem_structured()) if problem_art else _default_problem_structured()
+    prompt=(
+        "Ты AI-ассистент бизнес-аналитика в Discovery-процессе. Отвечай строго на русском языке. "
+        "На этапе 'Проблема' помоги сформулировать только проблему, без TO BE/решений/требований. Верни только JSON: "
+        "{'main_problem':'','user_pains':[{'role':'','pain':'','example':'','source':''}],'business_pains':[{'type':'','description':'','impact':''}],"
+        "'root_causes':[{'cause':'','category':'process|system|data|people|regulation|integration|unknown','confidence':'high|medium|low'}],"
+        "'consequences_if_not_solved':[],'evidence_signals':[],'clarifying_questions':[],'problem_statement':'','assumptions':[],'missing_information':[]}. "
+        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}"
+    )
+    data = _json_from_llm_response(create_llm(db).generate(prompt))
+    if not data: raise HTTPException(400, 'LLM вернул некорректный JSON')
+    versions = prev.get('versions', [])
+    versions.append({'created_at': str(time.time()), 'snapshot': {k:v for k,v in prev.items() if k!='versions'}})
+    merged = {**_default_problem_structured(), **prev, **data, 'versions': versions[-20:], 'status':'needs_clarification', 'source_context_version': context_art.version}
+    art = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, merged.get('problem_statement') or merged.get('main_problem') or '', structured_content=merged)
+    return {'ok':True,'structured_content':art.structured_content,'version':art.version}
+
+
+@router.post('/projects/{project_id}/problem/ask')
+def ask_problem(project_id: str, payload: dict, db: Session = Depends(get_db)):
+    question = payload.get('message','')
+    patch = {'clarifying_questions':[f"Уточнение: {question}"], 'missing_information':['Требуется подтверждение от пользователя']}
+    return {'ok': True, 'patch': patch, 'assistant_message': 'Предлагаю добавить уточнения в черновик проблемы.'}
+
+
+@router.post('/projects/{project_id}/problem/apply-patch')
+def apply_problem_patch(project_id: str, payload: dict, db: Session = Depends(get_db)):
+    art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
+    if not art: raise HTTPException(404, 'Артефакт проблемы не найден')
+    sc = art.structured_content or _default_problem_structured()
+    patch = payload.get('patch') or {}
+    for k,v in patch.items():
+        sc[k] = v
+    sc['status'] = payload.get('status') or sc.get('status') or 'draft'
+    saved = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, sc.get('problem_statement') or sc.get('main_problem') or '', structured_content=sc)
+    return {'ok':True, 'structured_content': saved.structured_content, 'version': saved.version}
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
