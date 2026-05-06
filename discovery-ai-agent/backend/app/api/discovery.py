@@ -136,7 +136,7 @@ def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
     old = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
     incoming = payload.get('api_key')
     api_key = old.api_key if old else None
-    if incoming and not str(incoming).startswith('********'):
+    if incoming and not str(incoming).startswith('********') and not str(incoming).strip()=='':
         api_key = incoming
     s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True)
     db.add(s); db.commit(); db.refresh(s)
@@ -144,21 +144,26 @@ def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
 
 @router.post('/settings/llm/test')
 def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
-    src = payload or get_llm_settings(db)
-    provider = (src.get('provider') or 'mock').lower()
-    model = src.get('model') or 'deepseek/deepseek-chat-v3-0324:free'
-    base_url = (src.get('base_url') or 'https://openrouter.ai/api/v1').rstrip('/')
+    saved = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
+    src = payload or {}
+    provider = (src.get('provider') or (saved.provider if saved else 'mock')).lower()
+    model = src.get('model') or (saved.model if saved else 'deepseek/deepseek-chat-v3-0324:free')
+    base_url = (src.get('base_url') or (saved.base_url if saved else 'https://openrouter.ai/api/v1')).rstrip('/')
     endpoint = base_url if base_url.endswith('/chat/completions') else f"{base_url}/chat/completions"
-    api_key = src.get('api_key')
+
+    incoming_key = src.get('api_key')
+    api_key = saved.api_key if saved else None
+    if incoming_key and not str(incoming_key).startswith('********'):
+        api_key = incoming_key
+
     if provider == 'mock':
         return {'ok': True, 'provider': 'mock', 'endpoint': 'mock://local', 'model': model}
-    key_tail = (api_key[-4:] if api_key else 'none')
-    body = {
-        'model': model,
-        'messages': [{'role': 'user', 'content': 'ping'}],
-        'max_tokens': 20,
-        'temperature': float(src.get('temperature', 0.2) or 0.2),
-    }
+
+    has_api_key = bool(api_key and not str(api_key).startswith('********'))
+    key_tail = (api_key[-4:] if has_api_key else 'none')
+    if provider != 'mock' and not has_api_key:
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'config', 'response_body': 'API key is empty', 'has_api_key': False, 'key_tail': key_tail})
+    body = {'model': model, 'messages': [{'role': 'user', 'content': 'ping'}], 'max_tokens': 20, 'temperature': float(src.get('temperature') or (saved.temperature if saved else 0.2))}
     req = request.Request(
         url=endpoint,
         data=json.dumps(body).encode(),
@@ -171,11 +176,11 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
         }
     )
     try:
-        with request.urlopen(req, timeout=int(src.get('timeout_seconds', 120) or 120)) as resp:
+        with request.urlopen(req, timeout=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120))) as resp:
             data = json.loads(resp.read().decode())
-            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'key_tail': key_tail, 'message': str(data)[:160]}
+            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'has_api_key': has_api_key, 'key_tail': key_tail, 'message': str(data)[:160]}
     except error.HTTPError as e:
         text = e.read().decode(errors='ignore')
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': e.code, 'response_body': text[:500], 'key_tail': key_tail})
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': e.code, 'response_body': text[:500], 'has_api_key': has_api_key, 'key_tail': key_tail})
     except Exception as e:
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'network', 'response_body': str(e), 'key_tail': key_tail})
+        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'network', 'response_body': str(e), 'has_api_key': has_api_key, 'key_tail': key_tail})
