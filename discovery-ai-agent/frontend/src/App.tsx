@@ -34,6 +34,11 @@ export default function App() {
       <div className='logo'>AI Discovery Platform</div>
       <NavLink to='/' className={({isActive})=>`nav-item ${isActive?'active':''}`}><House size={16}/>Главная</NavLink>
       <NavLink to='/' className='nav-item'><FolderKanban size={16}/>Проекты</NavLink>
+      <div className='card' style={{background:'rgba(255,255,255,.06)',borderColor:'rgba(148,163,184,.25)',color:'#cbd5e1',padding:'10px 12px'}}>
+        <div className='sub' style={{color:'#94a3b8'}}>Текущий проект</div>
+        <div style={{fontWeight:700,color:'#fff'}}>{currentProjectId || 'Не выбран'}</div>
+        <div className='sub' style={{color:'#94a3b8'}}>Прогресс: 0%</div>
+      </div>
       <div className='section-title'>Discovery Workspace</div>
       {workspace.map(([key,label,Icon]) => <button key={key} onClick={()=>goStage(key)} className={`nav-item ${sp.get('stage')===key ? 'active':''}`}><Icon size={16}/>{label}</button>)}
       <div className='section-title'>Инструменты</div>
