@@ -102,3 +102,14 @@ body{background:#f8fafc}
 .workspace-single{display:block}
 .top-progress{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:10px}
 .top-progress .progress{width:260px;margin-top:4px}
+.sources-card{border:1px solid #e5e7eb;border-radius:14px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:10px}
+.sources-head{display:flex;justify-content:space-between;align-items:center}
+.sources-list{display:flex;flex-direction:column;gap:8px}
+.source-row{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid #eef2f7;border-radius:12px;background:#fcfdff}
+.source-main{display:flex;align-items:center;gap:10px;min-width:0}
+.source-ico{width:26px;height:26px;border-radius:8px;background:#eef2ff;display:grid;place-items:center;font-size:13px}
+.source-title{font-weight:600;color:#1f2a44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px}
+.status-green{background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.source-type{font-weight:600;color:#6b7280}
+.sources-add{display:flex;gap:8px}
+.sources-add .input{flex:1}
