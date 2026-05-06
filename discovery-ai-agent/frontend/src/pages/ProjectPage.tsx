@@ -13,6 +13,22 @@ type ContextInput = {
 }
 const emptyInput:ContextInput={initiative_name:'',idea_summary:'',business_context:'',pain_points:'',impacted_processes:'',impacted_systems:'',links:{jira:'',confluence:'',figma:'',drawio:'',bi:''},files:[]}
 
+
+const safeText=(value:any):string=>{
+  if(value==null) return ''
+  if(['string','number','boolean'].includes(typeof value)) return String(value)
+  if(Array.isArray(value)) return value.map(safeText).filter(Boolean).join(', ')
+  if(typeof value==='object') return String(value.name || value.title || value.label || JSON.stringify(value))
+  return String(value)
+}
+const formatFileSize=(size:any)=>{
+  const n = Number(size||0)
+  if(!Number.isFinite(n) || n<=0) return '0 B'
+  if(n<1024) return `${n} B`
+  if(n<1024*1024) return `${(n/1024).toFixed(1)} KB`
+  return `${(n/(1024*1024)).toFixed(2)} MB`
+}
+
 const tabs:{label:string;type:ArtifactType;desc:string}[]=[
 {label:'Контекст',type:'CONTEXT',desc:'Бизнес-контекст, цели и ограничения.'},{label:'Проблема',type:'PROBLEM',desc:'Проблема и её последствия.'},{label:'Цель',type:'GOAL',desc:'Целевая формулировка и критерии успеха.'},
 {label:'Бизнес-эффект',type:'BUSINESS_EFFECT',desc:'Качественные и количественные эффекты.'},{label:'AS IS',type:'AS_IS',desc:'Текущее состояние.'},{label:'TO BE',type:'TO_BE',desc:'Целевое состояние.'},
@@ -80,12 +96,12 @@ export default function ProjectPage(){
           <div className='context-center card'>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h4>Источники знаний</h4><button className='btn primary' onClick={runContextAnalyze} disabled={thinking}>{thinking?'Индексация...':'Запустить индексацию'}</button></div>
             <div className='card'><b>Документы</b><div className='sub'>Drag & Drop (метаданные на этом этапе)</div><input type='file' multiple onChange={e=>{const files=Array.from(e.target.files||[]).map((f:any)=>({name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'в очереди'})); setDocuments([...(documents||[]),...files])}}/></div>
-            <div className='ai-sections'>{(documents||[]).map((d:any,i:number)=><div key={i} className='card'><b>{d.name}</b><div className='sub'>{d.type} • {Math.round((d.size||0)/1024)} KB • {d.ai_status||'—'}</div></div>)}</div>
-            <div className='card'><b>Ссылки</b><input className='input' placeholder='Вставьте URL и нажмите Enter' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),v]); (e.target as HTMLInputElement).value=''}}}}/><div className='timeline'>{links.map((l,i)=><span key={i} className='chip in_progress'>{l}</span>)}</div></div>
+            <div className='ai-sections'>{Array.isArray(documents) ? documents.map((d:any,i:number)=><div key={i} className='card'><div><b>Название:</b> {safeText(d?.name)}</div><div><b>Тип:</b> {safeText(d?.type || '—')}</div><div><b>Размер:</b> {formatFileSize(d?.size)}</div><div><b>Статус AI:</b> {safeText(d?.ai_status || 'в очереди')}</div><div><b>Дата загрузки:</b> {safeText(d?.created_at ? new Date(d.created_at).toLocaleString('ru-RU') : '—')}</div></div>) : []}</div>
+            <div className='card'><b>Ссылки</b><input className='input' placeholder='Вставьте URL и нажмите Enter' onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); const v=(e.target as HTMLInputElement).value.trim(); if(v){setLinks([...(links||[]),v]); (e.target as HTMLInputElement).value=''}}}}/><div className='timeline'>{Array.isArray(links) ? links.map((l,i)=><span key={i} className='chip in_progress'>{safeText(l)}</span>) : []}</div></div>
           </div>
           <div className='context-right card'>
             <h4><Database size={16}/> Извлечённые знания</h4>
-            {knowledge ? <div className='ai-sections'>{['процессы','системы','роли','интеграции','kpi','бизнес_сущности','документы','термины'].map((k)=><div className='card' key={k}><b>{k}</b><div className='timeline'>{(knowledge[k]||[]).map((x:string,i:number)=><span key={i} className='chip in_progress'>{x}</span>)}</div></div>)}<div className='card'><b>Покрытие знаний</b><ul>{Object.entries(knowledge.покрытие||{}).map(([k,v]:any)=><li key={k}>{v?'✔':'✖'} {k}</li>)}</ul></div></div> : <p className='sub'>После индексации здесь появятся извлечённые знания.</p>}
+            {knowledge ? <div className='ai-sections'>{['процессы','системы','роли','интеграции','kpi','бизнес_сущности','документы','термины'].map((k)=><div className='card' key={k}><b>{k}</b><div className='timeline'>{Array.isArray(knowledge[k]) ? knowledge[k].map((x:any,i:number)=><span key={i} className='chip in_progress'>{safeText(x)}</span>) : []}</div></div>)}<div className='card'><b>Покрытие знаний</b><ul>{Object.entries(knowledge.покрытие||{}).map(([k,v]:any)=><li key={k}>{v?'✔':'✖'} {k}</li>)}</ul></div></div> : <p className='sub'>После индексации здесь появятся извлечённые знания.</p>}
             <button className='btn' onClick={runContextAnalyze}><RefreshCcw size={14}/> Переиндексировать</button>
           </div>
         </div> : active==='GOAL' ? <div className='goal-layout'>
