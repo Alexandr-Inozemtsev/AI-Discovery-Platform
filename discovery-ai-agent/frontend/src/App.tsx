@@ -5,6 +5,8 @@ import './index.css'
 import './App.css'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectPage from './pages/ProjectPage'
+import LLMSettingsPage from './pages/LLMSettingsPage'
+import { api } from './api/client'
 
 const workspace:[string,string,any][] = [
   ['CONTEXT', 'Контекст', LayoutList], ['PROBLEM', 'Проблема', TriangleAlert], ['GOAL', 'Цель', Target], ['BUSINESS_EFFECT', 'Бизнес-эффект', Gauge],
@@ -14,13 +16,14 @@ const workspace:[string,string,any][] = [
 export default function App() {
   const [ok, setOk] = useState(false)
   const [msg, setMsg] = useState('')
+  const [llm, setLlm] = useState<any>({provider:'mock',model:'-'})
   const location = useLocation(); const navigate = useNavigate(); const [sp] = useSearchParams()
   const currentProjectId = useMemo(() => {
     const m = location.pathname.match(/^\/projects\/([^/]+)/)
     return m?.[1] || localStorage.getItem('lastOpenedProjectId') || ''
   }, [location.pathname])
 
-  useEffect(() => { fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)) }, [])
+  useEffect(() => { fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)); api<any>('/settings/llm').then(setLlm).catch(()=>{}) }, [])
 
   const goStage = (stage: string) => {
     const pid = currentProjectId || localStorage.getItem('lastOpenedProjectId')
@@ -34,6 +37,7 @@ export default function App() {
       <div className='logo'>AI Discovery Platform</div>
       <NavLink to='/' className={({isActive})=>`nav-item ${isActive?'active':''}`}><House size={16}/>Главная</NavLink>
       <NavLink to='/' className='nav-item'><FolderKanban size={16}/>Проекты</NavLink>
+      <NavLink to='/settings/llm' className={({isActive})=>`nav-item ${isActive?'active':''}`}><Settings size={16}/>LLM настройки</NavLink>
       <div className='card' style={{background:'rgba(255,255,255,.06)',borderColor:'rgba(148,163,184,.25)',color:'#cbd5e1',padding:'10px 12px'}}>
         <div className='sub' style={{color:'#94a3b8'}}>Текущий проект</div>
         <div style={{fontWeight:700,color:'#fff'}}>{currentProjectId || 'Не выбран'}</div>
@@ -52,7 +56,7 @@ export default function App() {
 
     <main className='main'>
       <div className='topbar'>
-        <div><span className='status-ok' style={{background:ok?'var(--success)':'#ef4444'}}/>Backend: {ok?'подключен':'недоступен'}</div>
+        <div><span className='status-ok' style={{background:ok?'var(--success)':'#ef4444'}}/>Backend: {ok?'подключен':'недоступен'} · LLM: {llm.provider} / {llm.model||'-'}</div>
         <div style={{display:'flex',alignItems:'center',gap:12}}><CircleHelp size={18}/><Bell size={18}/><div style={{width:30,height:30,borderRadius:999,background:'#dbeafe',display:'grid',placeItems:'center',fontWeight:700}}>A</div><strong>Александр</strong></div>
       </div>
       {msg && <div className='card' style={{marginBottom:10,color:'#b45309'}}>{msg}</div>}
@@ -60,6 +64,7 @@ export default function App() {
         <Routes>
           <Route path='/' element={<ProjectsPage />} />
           <Route path='/projects/:projectId' element={<ProjectPage />} />
+          <Route path='/settings/llm' element={<LLMSettingsPage />} />
         </Routes>
       </div>
     </main>

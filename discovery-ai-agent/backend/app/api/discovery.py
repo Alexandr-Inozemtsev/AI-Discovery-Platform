@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.agents.critic_agent import CriticAgent
 from app.agents.orchestrator import AgentOrchestrator
+from app.llm.factory import create_llm
+from app.models.llm_settings import LLMSettings
 from app.db.session import get_db
 from app.models.discovery import ArtifactType
 from app.repositories import discovery as repo
@@ -11,8 +13,8 @@ from app.services.docx_export_service import build_docx
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/api", tags=["discovery"])
-orchestrator = AgentOrchestrator()
-critic = CriticAgent(orchestrator.get_agent("PROBLEM").llm)
+orchestrator = None
+critic = None
 
 SECTION_META = {
     "CONTEXT": ("Контекст", True), "PROBLEM": ("Проблема", True), "GOAL": ("Цель", True), "BUSINESS_EFFECT": ("Бизнес-эффект", True),
@@ -67,6 +69,7 @@ def put_artifact(project_id: str, artifact_type: ArtifactType, payload: Artifact
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
+    orchestrator = AgentOrchestrator(create_llm(db))
     agent = orchestrator.get_agent(artifact_type.value)
     if not agent: raise HTTPException(400, 'Генерация для этого типа артефакта не поддерживается')
     content = agent.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
@@ -76,6 +79,7 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
 def validate_project(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
+    critic = CriticAgent(create_llm(db))
     content = critic.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
     return repo.upsert_artifact(db, project_id, ArtifactType.VALIDATION_REPORT, content, None)
 
@@ -109,3 +113,30 @@ def export_docx(project_id: str, db: Session = Depends(get_db)):
     if not p: raise HTTPException(404, 'Project not found')
     bio = build_docx(p, repo.list_artifacts(db, project_id))
     return StreamingResponse(bio, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers={'Content-Disposition': f'attachment; filename=BT_{project_id}.docx'})
+
+
+@router.get('/settings/llm')
+def get_llm_settings(db: Session = Depends(get_db)):
+    s = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
+    if not s:
+        return {'provider':'mock','base_url':'','api_key':'','model':'','timeout_seconds':60,'temperature':0.2,'is_active':True}
+    key = s.api_key or ''
+    masked = key[:3] + '****' + key[-4:] if len(key) > 7 else ('****' if key else '')
+    return {'provider':s.provider,'base_url':s.base_url,'api_key':masked,'model':s.model,'timeout_seconds':s.timeout_seconds,'temperature':s.temperature,'is_active':s.is_active}
+
+@router.put('/settings/llm')
+def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
+    old = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
+    api_key = payload.get('api_key') if payload.get('api_key') else (old.api_key if old else None)
+    s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True)
+    db.add(s); db.commit(); db.refresh(s)
+    return {'ok': True}
+
+@router.post('/settings/llm/test')
+def test_llm(db: Session = Depends(get_db)):
+    try:
+        llm = create_llm(db)
+        text = llm.generate('Проверка подключения. Ответь OK.')
+        return {'ok': True, 'message': text[:120]}
+    except Exception as e:
+        raise HTTPException(400, f'Ошибка подключения: {e}')

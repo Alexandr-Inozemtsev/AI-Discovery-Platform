@@ -7,8 +7,8 @@ from app.llm.mock_client import MockLLMClient
 
 
 class AgentOrchestrator:
-    def __init__(self):
-        llm = MockLLMClient()
+    def __init__(self, llm=None):
+        llm = llm or MockLLMClient()
         self._agents = {
             "PROBLEM": ProblemAgent(llm),
             "GOAL": GoalAgent(llm),
