@@ -9,6 +9,10 @@ import ProjectPage from './pages/ProjectPage'
 import SettingsPage from './pages/SettingsPage'
 import { api } from './api/client'
 import ErrorBoundary from './components/ErrorBoundary'
+import AppShell from './ui/components/AppShell'
+import Sidebar from './ui/components/Sidebar'
+import TopHeader from './ui/components/TopHeader'
+import Badge from './ui/components/Badge'
 
 const workspace:[string,string,any][] = [
   ['CONTEXT', 'Контекст', LayoutList], ['PROBLEM', 'Проблема', TriangleAlert], ['GOAL', 'Цель', Target], ['BUSINESS_EFFECT', 'Бизнес-эффект', Gauge],
@@ -20,52 +24,20 @@ export default function App() {
   const [msg, setMsg] = useState('')
   const [llm, setLlm] = useState<any>({provider:'mock',model:'-'})
   const location = useLocation(); const navigate = useNavigate(); const [sp] = useSearchParams()
-  const currentProjectId = useMemo(() => {
-    const m = location.pathname.match(/^\/projects\/([^/]+)/)
-    return m?.[1] || localStorage.getItem('lastOpenedProjectId') || ''
-  }, [location.pathname])
+  const currentProjectId = useMemo(() => (location.pathname.match(/^\/projects\/([^/]+)/)?.[1] || localStorage.getItem('lastOpenedProjectId') || ''), [location.pathname])
+  useEffect(() => {const refresh = () => api<any>('/settings/llm').then(setLlm).catch(()=>{}); fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)); refresh()}, [])
+  const goStage = (stage: string) => {const pid = currentProjectId || localStorage.getItem('lastOpenedProjectId'); if (!pid) return setMsg('Сначала создайте или откройте проект'); setMsg(''); navigate(`/projects/${pid}?stage=${stage}`)}
 
-  useEffect(() => {
-    const refresh = () => api<any>('/settings/llm').then(setLlm).catch(()=>{})
-    fetch('http://localhost:8000/health').then(r => setOk(r.ok)).catch(() => setOk(false)); refresh()
-    window.addEventListener('llm-updated', refresh)
-    return () => window.removeEventListener('llm-updated', refresh)
-  }, [])
-
-  const goStage = (stage: string) => {
-    const pid = currentProjectId || localStorage.getItem('lastOpenedProjectId')
-    if (!pid) return setMsg('Сначала создайте или откройте проект')
-    setMsg('')
-    navigate(`/projects/${pid}?stage=${stage}`)
-  }
-
-  return <div className='app-shell refined'>
-    <aside className='sidebar refined'>
-      <div className='logo'>✕ AI Discovery Platform</div>
-      <NavLink to='/' className={({isActive})=>`nav-item ${isActive?'active':''}`}><House size={16}/>Главная</NavLink>
-      <NavLink to='/projects' className={({isActive})=>`nav-item ${isActive?'active':''}`}><FolderKanban size={16}/>Проекты</NavLink>
-      <div className='section-title'>DISCOVERY WORKSPACE</div>
-      {workspace.map(([key,label,Icon]) => <button key={key} onClick={()=>goStage(key)} className={`nav-item ${sp.get('stage')===key ? 'active':''}`}><Icon size={16}/>{label}</button>)}
-      <div className='section-title'>ИНСТРУМЕНТЫ</div>
-      <div className='nav-item'><BookCheck size={16}/>Проверка полноты</div>
-      <div className='nav-item'><FileDown size={16}/>Экспорт БТ (DOCX)</div>
-      <div style={{marginTop:'auto'}}><NavLink to='/settings/llm' className={({isActive})=>`nav-item ${isActive?'active':''}`}><Settings size={16}/>Настройки</NavLink></div>
-    </aside>
-
-    <main className='main refined-main'>
-      <div className='project-header'>
-        <div style={{display:'flex',alignItems:'center',gap:10}}><h2 style={{margin:0,fontSize:32/2,fontWeight:700}}>Автопролонгация ИБС</h2><span className='badge work'>В работе</span><span className='sub'>Версия: 33</span><span className='sub'>Обновлено: 06.05.2026, 09:15:12</span></div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}><span className='sub'><span className='status-ok' style={{background:ok?'#22c55e':'#ef4444'}}/> Backend: {ok?'подключен':'недоступен'}</span><CircleHelp size={18}/><Bell size={18}/><div style={{width:30,height:30,borderRadius:999,background:'#1d4ed8',color:'#fff',display:'grid',placeItems:'center',fontWeight:700}}>A</div><strong>Александр</strong></div>
-      </div>
-      {msg && <div className='card' style={{margin:'10px 20px',color:'#b45309'}}>{msg}</div>}
-      <div className='content refined-content'>
-        <Routes>
-          <Route path='/' element={<HomePage />} />
-          <Route path='/projects' element={<ProjectsPage />} />
-          <Route path='/projects/:projectId' element={<ErrorBoundary fallbackTitle='Ошибка экрана проекта'><ProjectPage /></ErrorBoundary>} />
-          <Route path='/settings/*' element={<SettingsPage />} />
-        </Routes>
-      </div>
-    </main>
-  </div>
+  return <AppShell
+    sidebar={<Sidebar><div className='logo'>✕ AI Discovery Platform</div><NavLink to='/' className={({isActive})=>`nav-item ${isActive?'active':''}`}><House size={16}/>Главная</NavLink><NavLink to='/projects' className={({isActive})=>`nav-item ${isActive?'active':''}`}><FolderKanban size={16}/>Проекты</NavLink><div className='section-title'>DISCOVERY WORKSPACE</div>{workspace.map(([key,label,Icon]) => <button key={key} onClick={()=>goStage(key)} className={`nav-item ${sp.get('stage')===key ? 'active':''}`}><Icon size={16}/>{label}</button>)}<div className='section-title'>ИНСТРУМЕНТЫ</div><div className='nav-item'><BookCheck size={16}/>Проверка полноты</div><div className='nav-item'><FileDown size={16}/>Экспорт БТ (DOCX)</div><div style={{marginTop:'auto'}}><NavLink to='/settings/llm' className={({isActive})=>`nav-item ${isActive?'active':''}`}><Settings size={16}/>Настройки</NavLink></div></Sidebar>}
+    header={<TopHeader left={<div style={{display:'flex',alignItems:'center',gap:10}}><h2 style={{margin:0,fontSize:16,fontWeight:700}}>Автопролонгация ИБС</h2><Badge text='В работе' variant='ready'/><span className='sub'>Версия: 33</span><span className='sub'>Обновлено: 06.05.2026, 09:15:12</span></div>} right={<div style={{display:'flex',alignItems:'center',gap:12}}><span className='sub'><span className='status-ok' style={{background:ok?'#22c55e':'#ef4444'}}/> Backend: {ok?'подключен':'недоступен'}</span><CircleHelp size={18}/><Bell size={18}/><div style={{width:30,height:30,borderRadius:999,background:'#1d4ed8',color:'#fff',display:'grid',placeItems:'center',fontWeight:700}}>A</div><strong>Александр</strong></div>} />}
+  >
+    {msg && <div className='card' style={{marginBottom:10,color:'#b45309'}}>{msg}</div>}
+    <Routes>
+      <Route path='/' element={<HomePage />} />
+      <Route path='/projects' element={<ProjectsPage />} />
+      <Route path='/projects/:projectId' element={<ErrorBoundary fallbackTitle='Ошибка экрана проекта'><ProjectPage /></ErrorBoundary>} />
+      <Route path='/settings/*' element={<SettingsPage />} />
+    </Routes>
+  </AppShell>
 }

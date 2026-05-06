@@ -1,0 +1,1 @@
+export default function StageTabs({tabs,active,onChange}:{tabs:{key:string,label:string}[],active:string,onChange:(k:string)=>void}){return <div className='ui-stage-tabs'>{tabs.map(t=><button key={t.key} onClick={()=>onChange(t.key)} className={`ui-stage-tab ${active===t.key?'active':''}`}>{t.label}</button>)}</div>}
