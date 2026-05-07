@@ -279,6 +279,23 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
     return {'ok':True,'warning':warning,'structured_content':art.structured_content,'draft':data,'version':art.version}
 
 
+
+@router.post('/projects/{project_id}/stage/{artifact_type}/questions')
+def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
+    context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    if not context_art:
+        raise HTTPException(400, 'Сначала заполните Контекст')
+    art = repo.get_artifact(db, project_id, artifact_type)
+    sc = (art.structured_content if art else {}) or {}
+    prompt = f"Сформируй 3-5 уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
+    raw = create_llm(db).generate(prompt)
+    data = _json_from_llm_response(raw)
+    questions = data.get('questions') if isinstance(data, dict) else []
+    if not isinstance(questions, list): questions = []
+    sc['ai_questions'] = questions
+    saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
+    return {'ok': True, 'questions': questions, 'structured_content': saved.structured_content}
+
 @router.post('/projects/{project_id}/stage/{artifact_type}/ask')
 def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
     art = repo.get_artifact(db, project_id, artifact_type)
