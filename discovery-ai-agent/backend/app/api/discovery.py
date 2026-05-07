@@ -145,6 +145,25 @@ def validate_project(project_id: str, db: Session = Depends(get_db)):
 
 
 
+
+
+def _default_goal_structured():
+    now = str(time.time())
+    return {
+        'id':'','title':'','businessProblem':'','desiredOutcome':'','businessImportance':'','noActionImpact':'',
+        'businessValue':{'fteSaving':None,'revenueImpact':None,'riskReduction':'','operationalEffect':''},
+        'successMetrics':[],'nonGoals':[],'assumptions':[],'risks':[],'constraints':[],'stakeholders':[],
+        'priority':'MEDIUM','status':'DRAFT','aiSummary':'','aiRecommendations':[],'aiQuestions':[],'aiContradictions':[],'aiDetectedProblems':[],
+        'smartAnalysis':{'specific':{'status':'warning','comment':'Не заполнено','recommendation':'Уточните цель'},'measurable':{'status':'warning','comment':'Не заполнено','recommendation':'Добавьте KPI'},'achievable':{'status':'warning','comment':'Не заполнено','recommendation':'Опишите ограничения'},'relevant':{'status':'warning','comment':'Не заполнено','recommendation':'Покажите бизнес-ценность'},'timeBound':{'status':'error','comment':'Нет срока','recommendation':'Укажите срок'}},
+        'completeness':0,'linkedProblems':[],'linkedRequirements':[],'linkedUseCases':[],'affectedSections':[],
+        'history':[],'aiHistory':[],'createdAt':now,'updatedAt':now
+    }
+
+
+def _goal_to_text(sc:dict):
+    metrics = '; '.join([f"{m.get('metric','')}: {m.get('currentValue','—')} -> {m.get('targetValue','')}" for m in (sc.get('successMetrics') or [])])
+    return f"Цель инициативы: {sc.get('title','')}\nПроблема: {sc.get('businessProblem','')}\nРезультат: {sc.get('desiredOutcome','')}\nKPI: {metrics}"
+
 def _default_problem_structured():
     return {
         'main_problem':'','user_pains':[],'business_pains':[],'root_causes':[],'consequences_if_not_solved':[],'evidence_signals':[],
@@ -197,6 +216,42 @@ def apply_problem_patch(project_id: str, payload: dict, db: Session = Depends(ge
     sc['status'] = payload.get('status') or sc.get('status') or 'draft'
     saved = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, sc.get('problem_statement') or sc.get('main_problem') or '', structured_content=sc)
     return {'ok':True, 'structured_content': saved.structured_content, 'version': saved.version}
+
+
+@router.post('/projects/{project_id}/goal/generate')
+def generate_goal(project_id: str, db: Session = Depends(get_db)):
+    p = repo.get_project(db, project_id)
+    if not p: raise HTTPException(404, 'Проект не найден')
+    context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
+    current = repo.get_artifact(db, project_id, ArtifactType.GOAL)
+    prev = (current.structured_content or _default_goal_structured()) if current else _default_goal_structured()
+    prompt = (
+        "Ты Goal Engine для Discovery. Отвечай только JSON на русском. "
+        "Верни структуру: {summary, smartAnalysis, questions, recommendations, contradictions, metrics, risks, nonGoals, detectedProblems, completeness}. "
+        f"Контекст: {json.dumps((context_art.structured_content if context_art else {}), ensure_ascii=False)}. "
+        f"Проблема: {json.dumps((problem_art.structured_content if problem_art else {}), ensure_ascii=False)}. "
+        f"Текущая цель: {json.dumps(prev, ensure_ascii=False)}"
+    )
+    data = _json_from_llm_response(create_llm(db).generate(prompt))
+    merged = {**_default_goal_structured(), **prev}
+    merged['aiSummary'] = data.get('summary') or merged.get('aiSummary')
+    merged['aiQuestions'] = data.get('questions') or merged.get('aiQuestions')
+    merged['aiRecommendations'] = data.get('recommendations') or merged.get('aiRecommendations')
+    merged['aiContradictions'] = data.get('contradictions') or merged.get('aiContradictions')
+    merged['aiDetectedProblems'] = data.get('detectedProblems') or merged.get('aiDetectedProblems')
+    merged['nonGoals'] = data.get('nonGoals') or merged.get('nonGoals')
+    merged['risks'] = data.get('risks') or merged.get('risks')
+    merged['successMetrics'] = data.get('metrics') or merged.get('successMetrics')
+    merged['smartAnalysis'] = data.get('smartAnalysis') or merged.get('smartAnalysis')
+    merged['completeness'] = int(data.get('completeness') or merged.get('completeness') or 0)
+    merged['status'] = 'AI_GENERATED'
+    merged['updatedAt'] = str(time.time())
+    merged['affectedSections'] = ['Проблема','Бизнес-эффект','AS IS','TO BE','Use Cases','Требования','Риски','Финальный БТ']
+    merged['aiHistory'] = [*((merged.get('aiHistory') or [])), {'createdAt': str(time.time()), 'response': data}][-30:]
+    art = repo.upsert_artifact(db, project_id, ArtifactType.GOAL, _goal_to_text(merged), structured_content=merged)
+    return {'ok':True,'structured_content':art.structured_content,'version':art.version}
+
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
