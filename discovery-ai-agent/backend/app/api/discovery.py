@@ -197,17 +197,21 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     prev = (problem_art.structured_content or _default_problem_structured()) if problem_art else _default_problem_structured()
     prompt=(
         "Ты AI-ассистент бизнес-аналитика в Discovery-процессе. Отвечай строго на русском языке. "
-        "На этапе 'Проблема' помоги сформулировать только проблему, без TO BE/решений/требований. Верни только JSON: "
+        "На этапе 'Проблема' помоги сформулировать только проблему, без TO BE/решений/требований. Учитывай: 1) ручной текст PO в main_problem, 2) только отвеченные ai_questions, 3) контекст. Верни только JSON: "
         "{'main_problem':'','user_pains':[{'role':'','pain':'','example':'','source':''}],'business_pains':[{'type':'','description':'','impact':''}],"
         "'root_causes':[{'cause':'','category':'process|system|data|people|regulation|integration|unknown','confidence':'high|medium|low'}],"
         "'consequences_if_not_solved':[],'evidence_signals':[],'clarifying_questions':[],'problem_statement':'','assumptions':[],'missing_information':[]}. "
-        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}"
+        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps([q for q in (prev.get('ai_questions') or []) if isinstance(q, dict) and str(q.get('answer','')).strip()], ensure_ascii=False)}"
     )
     data = _json_from_llm_response(create_llm(db).generate(prompt))
     if not data: raise HTTPException(400, 'LLM вернул некорректный JSON')
     versions = prev.get('versions', [])
     versions.append({'created_at': str(time.time()), 'snapshot': {k:v for k,v in prev.items() if k!='versions'}})
     merged = {**_default_problem_structured(), **prev, **data, 'versions': versions[-20:], 'status':'needs_clarification', 'source_context_version': context_art.version}
+    gen_list = data.get('generated_problem_list') or []
+    if isinstance(gen_list, list) and gen_list:
+        merged['generated_problem_list'] = gen_list
+        merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i,x in enumerate(gen_list)])
     art = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, merged.get('problem_statement') or merged.get('main_problem') or '', structured_content=merged)
     return {'ok':True,'structured_content':art.structured_content,'version':art.version}
 
@@ -288,7 +292,7 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
         raise HTTPException(400, 'Сначала заполните Контекст')
     art = repo.get_artifact(db, project_id, artifact_type)
     sc = (art.structured_content if art else {}) or {}
-    prompt = f"Сформируй 3-5 новых уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
+    prompt = f"Сформируй 3-5 дополнительных уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
     raw = create_llm(db).generate(prompt)
     data = _json_from_llm_response(raw)
     new_questions = data.get('questions') if isinstance(data, dict) else []
