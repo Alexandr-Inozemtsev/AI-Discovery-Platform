@@ -131,7 +131,14 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
     agent = orchestrator.get_agent(artifact_type.value)
     if not agent: raise HTTPException(400, 'Генерация для этого типа артефакта не поддерживается')
     try:
-        content = agent.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
+        existing=_existing_artifacts_map(db, project_id)
+        ctx={k: v['content'] for k, v in existing.items()}
+        current = existing.get(artifact_type.value, {})
+        sc = current.get('structured_content') or {}
+        qa = sc.get('ai_answers') or []
+        if qa:
+            ctx['AI_QA_CONTEXT'] = json.dumps(qa, ensure_ascii=False)
+        content = agent.run(p, ctx)
     except Exception as e:
         if 'openrouter' in str(e).lower() or '401' in str(e) or 'timeout' in str(e).lower():
             raise HTTPException(400, 'OpenRouter недоступен. Проверьте API key, модель и интернет-соединение.')
@@ -166,6 +173,9 @@ def _default_goal_structured():
 def _goal_to_text(sc:dict):
     metrics = '; '.join([f"{m.get('metric','')}: {m.get('currentValue','—')} -> {m.get('targetValue','')}" for m in (sc.get('successMetrics') or [])])
     return f"Цель инициативы: {sc.get('title','')}\nПроблема: {sc.get('businessProblem','')}\nРезультат: {sc.get('desiredOutcome','')}\nKPI: {metrics}"
+
+def _default_stage_ai_structured():
+    return {'ai_questions':[], 'ai_answers':[], 'ai_patch':{}, 'ai_history':[]}
 
 def _default_problem_structured():
     return {
@@ -267,6 +277,36 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
     merged['aiHistory'] = [*((merged.get('aiHistory') or [])), {'createdAt': str(time.time()), 'response': data}][-30:]
     art = repo.upsert_artifact(db, project_id, ArtifactType.GOAL, _goal_to_text(merged), structured_content=merged)
     return {'ok':True,'warning':warning,'structured_content':art.structured_content,'draft':data,'version':art.version}
+
+
+@router.post('/projects/{project_id}/stage/{artifact_type}/ask')
+def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
+    art = repo.get_artifact(db, project_id, artifact_type)
+    sc = (art.structured_content if art else {}) or {}
+    msg = payload.get('message','').strip()
+    if not msg:
+        raise HTTPException(400, 'Введите ответ для AI')
+    prompt = f"На этапе {artifact_type.value} предложи патч к артефакту на русском. Контекст ответа пользователя: {msg}. Верни JSON-объект patch."
+    llm = create_llm(db)
+    raw = llm.generate(prompt)
+    patch = _json_from_llm_response(raw) or {'note': msg}
+    sc.setdefault('ai_questions', []).append(f'Уточнение: {msg}')
+    sc.setdefault('ai_answers', []).append({'question': msg, 'answered_at': str(time.time())})
+    sc['ai_patch'] = patch
+    sc.setdefault('ai_history', []).append({'q': msg, 'raw': raw})
+    saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
+    return {'ok': True, 'patch': patch, 'structured_content': saved.structured_content}
+
+@router.post('/projects/{project_id}/stage/{artifact_type}/apply-patch')
+def stage_apply_patch(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
+    art = repo.get_artifact(db, project_id, artifact_type)
+    if not art: raise HTTPException(404, 'Артефакт не найден')
+    sc = (art.structured_content or {})
+    patch = payload.get('patch') or sc.get('ai_patch') or {}
+    if isinstance(patch, dict):
+        sc.update(patch)
+    saved = repo.upsert_artifact(db, project_id, artifact_type, art.content, structured_content=sc, rich_content_json=art.rich_content_json, rendered_html=art.rendered_html)
+    return {'ok': True, 'structured_content': saved.structured_content}
 
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
