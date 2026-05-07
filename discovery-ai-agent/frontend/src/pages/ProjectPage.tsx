@@ -176,12 +176,14 @@ export default function ProjectPage(){
   const applyGoalPatch=()=>{if(!goalPatch) return; updateGoal({...goalData,...goalPatch}); setGoalPatch(null)}
   const addMetric=()=>updateGoal({successMetrics:[...(goalData.successMetrics||[]),{metric:'',currentValue:'',targetValue:'',measurement:'',dataSource:''}]})
 
+  const goalDependents:ArtifactType[]=['BUSINESS_EFFECT','AS_IS','TO_BE','USE_CASES','FUNCTIONAL_REQUIREMENTS','RISKS','FINAL_BT']
+  const showGoalNotice=goalDependents.includes(active) && (pipeline[active]?.source_versions?.GOAL || pipeline[active]?.status==='stale')
   if(!project) return <div className='card'>Проект не найден</div>
   return <div className='workspace-single'>
     <section>
       <div className='card' style={{marginBottom:12}}>
         <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div></div></div>
-        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div><AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
+        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
       </div>
 
       <div className='card'>
@@ -244,7 +246,7 @@ export default function ProjectPage(){
           <div className='card'><h4>AI Questions</h4>{(goalData.aiQuestions||[]).map((q:string,i:number)=><div key={i} className='sub'>• {q}</div>)}<input className='input' placeholder='Ответьте на вопрос AI...' value={goalQuestion} onChange={e=>setGoalQuestion(e.target.value)}/><button className='btn' onClick={askGoal}>Отправить AI</button>{goalPatch && <div className='card'><div className='sub'>AI предлагает patch</div><div style={{display:'flex',gap:8}}><button className='btn primary' onClick={applyGoalPatch}>Применить</button><button className='btn' onClick={()=>setGoalPatch(null)}>Отклонить</button></div></div>}</div>
         </div> : <div style={{marginTop:14}}><h4 style={{margin:'0 0 6px'}}>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}
         {active!=='CONTEXT' && <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Как работает Discovery в платформе</h4><div className='flow-grid'>{workflowStages.map(([key,text],idx)=><div key={key} className={`flow-step ${active===key?'active':''}`}><b>{idx+1}. {tabs.find(t=>t.type===key)?.label}</b><p className='sub'>{text}</p></div>)}</div><p className='sub'>AI постоянно использует контекст на всех этапах и обновляет артефакты при изменениях.</p></div>}
-        <div className='sub'>Autosave: {saving==='saving'?'Сохранение…':saving==='saved'?'Сохранено':saving==='error'?'Ошибка сохранения':'—'}</div>
+        {active==='FINAL_BT' && <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Preview финального БТ</h4><div className='sub'>Sections, зависящие от Goal: BUSINESS_EFFECT, AS_IS, TO_BE, USE_CASES, REQUIREMENTS, RISKS, FINAL_BT.</div></div>}<div className='sub'>Autosave: {saving==='saving'?'Сохранение…':saving==='saved'?'Сохранено':saving==='error'?'Ошибка сохранения':'—'}</div>
         {msg && <p className={`sub ${msg==='Сохранено' || msg==='Генерация завершена' ? '' : ''}`}>{msg}</p>}
       </div>
     </section>
