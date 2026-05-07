@@ -9,6 +9,20 @@ SECTION_ORDER = [
     ("NON_FUNCTIONAL_REQUIREMENTS", "11. Нефункциональные требования"), ("RISKS", "12. Риски"), ("FINAL_BT", "13. Финальный БТ"),
 ]
 
+def _goal_section(doc: Document, sc: dict):
+    doc.add_paragraph(f"Цель проекта: {sc.get('title') or 'Не заполнено'}")
+    doc.add_paragraph("KPI / метрики успеха:")
+    metrics = sc.get('successMetrics') or []
+    if metrics:
+        for m in metrics:
+            doc.add_paragraph(f"- {m.get('metric','Не заполнено')} | текущее: {m.get('currentValue','Не заполнено')} | целевое: {m.get('targetValue','Не заполнено')}")
+    else:
+        doc.add_paragraph('Не заполнено')
+    doc.add_paragraph('Что не входит в scope: ' + (', '.join(sc.get('nonGoals') or []) or 'Не заполнено'))
+    doc.add_paragraph('Ограничения: ' + (', '.join(sc.get('constraints') or []) or 'Не заполнено'))
+    doc.add_paragraph('Предпосылки: ' + (', '.join(sc.get('assumptions') or []) or 'Не заполнено'))
+    doc.add_paragraph('Связанные проблемы: ' + (', '.join(sc.get('linkedProblems') or []) or 'Не заполнено'))
+
 def build_docx(project, artifacts):
     doc = Document()
     doc.add_heading(project.project_name, 0)
@@ -24,6 +38,9 @@ def build_docx(project, artifacts):
     for key, title in SECTION_ORDER:
         doc.add_page_break(); doc.add_heading(title, level=1)
         a = art.get(key)
-        doc.add_paragraph((a.content if a else "") or "Раздел пока не заполнен")
+        if key == 'GOAL' and a and a.structured_content:
+            _goal_section(doc, a.structured_content)
+        else:
+            doc.add_paragraph((a.content if a else "") or "Раздел пока не заполнен")
     bio = BytesIO(); doc.save(bio); bio.seek(0)
     return bio
