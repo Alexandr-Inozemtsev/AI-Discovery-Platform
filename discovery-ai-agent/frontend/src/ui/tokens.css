@@ -1,0 +1,23 @@
+:root {
+  --ui-bg: #F6F8FC;
+  --ui-surface: #FFFFFF;
+  --ui-text: #0F172A;
+  --ui-text-muted: #64748B;
+  --ui-primary: #2563EB;
+  --ui-primary-soft: #EFF6FF;
+  --ui-success: #22C55E;
+  --ui-warning: #F59E0B;
+  --ui-danger: #EF4444;
+  --ui-border: #E2E8F0;
+  --ui-sidebar-start: #07111F;
+  --ui-sidebar-end: #0B1220;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+  --ui-shadow-card: 0 8px 20px rgba(15, 23, 42, 0.06);
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 24px;
+  --ui-space-6: 32px;
+}
