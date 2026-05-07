@@ -165,3 +165,5 @@ h4{color:var(--text-main);font-weight:700}
 .ui-pill{background:#EFF6FF;color:#2563EB;border:1px solid #DBEAFE;border-radius:9999px;padding:4px 8px;font-size:12px}
 .ui-stage-tabs{display:flex;gap:8px;overflow:auto}.ui-stage-tab{height:34px;padding:0 16px;border-radius:9999px;border:1px solid transparent;background:#F1F5F9;color:#475569;font-size:14px;font-weight:600}.ui-stage-tab.active{background:#fff;border-color:#2563EB;color:#2563EB}
 .projects-filter{display:grid;gap:8px;margin-bottom:12px}
+.pipe-dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.pipe-dot.empty{background:#cbd5e1}.pipe-dot.draft{background:#94a3b8}.pipe-dot.ai_generated{background:#60a5fa}.pipe-dot.manually_edited{background:#2563eb}.pipe-dot.ready{background:#22c55e}.pipe-dot.stale{background:#f59e0b}
