@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { ArtifactType, Project } from '../types/discovery'
+import AIActionBar from '../ui/components/AIActionBar'
 
 
 
@@ -93,7 +94,7 @@ const demoLinks=[
 export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
-  const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
+  const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
 
@@ -151,12 +152,27 @@ export default function ProjectPage(){
   const addListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',val:string)=>{ if(!val.trim()) return; updateGoal({[key]:[...toArray(goalData[key]),val.trim()] } as any) }
   const removeListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',idx:number)=> updateGoal({[key]:toArray(goalData[key]).filter((_:any,i:number)=>i!==idx)} as any)
 
+
+  const runAiAction=async(key:string,fn:()=>Promise<void>)=>{try{setAiActionLoading(key); setMsg(''); await fn()}catch(e:any){setMsg(e?.message||'Ошибка AI действия')}finally{setAiActionLoading(null)}}
+  const aiActionsByStage:Record<string,{key:string;label:string;enabled:boolean;onClick?:()=>void}[]>={
+    CONTEXT:[{key:'ctx_index',label:'Проиндексировать контекст',enabled:true,onClick:()=>runAiAction('ctx_index',runContextAnalyze)},{key:'ctx_extract',label:'Извлечь знания',enabled:true,onClick:()=>runAiAction('ctx_extract',runContextAnalyze)},{key:'ctx_cov',label:'Проверить покрытие знаний',enabled:true,onClick:()=>runAiAction('ctx_cov',async()=>{await runContextAnalyze()})}],
+    PROBLEM:[{key:'pr_gen',label:'Сгенерировать проблему из контекста',enabled:true,onClick:()=>runAiAction('pr_gen',generateProblem)},{key:'pr_ask',label:'Задать уточняющие вопросы',enabled:true,onClick:()=>runAiAction('pr_ask',askProblem)},{key:'pr_root',label:'Найти корневые причины',enabled:true,onClick:()=>runAiAction('pr_root',generateProblem)},{key:'pr_upd',label:'Обновить по контексту',enabled:true,onClick:()=>runAiAction('pr_upd',generateProblem)}],
+    GOAL:[{key:'goal_gen',label:'Сгенерировать цели из контекста и проблемы',enabled:true,onClick:()=>runAiAction('goal_gen',async()=>{await api<any>(`/projects/${projectId}/goal/generate`,{method:'POST'}); await loadArtifact('GOAL')})},{key:'goal_kpi',label:'Предложить KPI',enabled:false},{key:'goal_smart',label:'Проверить SMART',enabled:false},{key:'goal_contra',label:'Найти противоречия',enabled:false},{key:'goal_decomp',label:'Декомпозировать цель',enabled:false}],
+    BUSINESS_EFFECT:[{key:'be_gen',label:'Сгенерировать бизнес-эффект',enabled:true,onClick:()=>runAiAction('be_gen',gen)},{key:'be_metric',label:'Предложить метрики',enabled:false},{key:'be_eval',label:'Оценить FTE / риски / доход',enabled:false}],
+    AS_IS:[{key:'as_gen',label:'Сгенерировать AS IS',enabled:true,onClick:()=>runAiAction('as_gen',gen)},{key:'as_manual',label:'Выявить ручные операции',enabled:false},{key:'as_bottleneck',label:'Найти узкие места',enabled:false}],
+    TO_BE:[{key:'tb_gen',label:'Сгенерировать TO BE',enabled:true,onClick:()=>runAiAction('tb_gen',gen)},{key:'tb_auto',label:'Предложить варианты автоматизации',enabled:false},{key:'tb_cmp',label:'Сравнить варианты',enabled:false}],
+    USE_CASES:[{key:'uc_gen',label:'Сгенерировать сценарии',enabled:true,onClick:()=>runAiAction('uc_gen',gen)},{key:'uc_neg',label:'Добавить негативные сценарии',enabled:false},{key:'uc_edge',label:'Добавить edge cases',enabled:false}],
+    FUNCTIONAL_REQUIREMENTS:[{key:'req_gen',label:'Сгенерировать требования',enabled:true,onClick:()=>runAiAction('req_gen',gen)},{key:'req_nfr',label:'Сгенерировать NFR',enabled:false},{key:'req_check',label:'Проверить полноту требований',enabled:true,onClick:()=>runAiAction('req_check',validate)}],
+    RISKS:[{key:'risk_gen',label:'Сгенерировать риски',enabled:true,onClick:()=>runAiAction('risk_gen',gen)},{key:'risk_dep',label:'Найти зависимости',enabled:false},{key:'risk_rb',label:'Сформировать rollback',enabled:false}],
+    FINAL_BT:[{key:'bt_build',label:'Собрать финальный БТ',enabled:true,onClick:()=>runAiAction('bt_build',gen)},{key:'bt_empty',label:'Проверить пустые разделы',enabled:true,onClick:()=>runAiAction('bt_empty',validate)},{key:'bt_docx',label:'Экспортировать DOCX',enabled:true,onClick:()=>window.open(`http://localhost:8000/api/projects/${projectId}/export/docx`,'_blank')}]
+  }
+
   if(!project) return <div className='card'>Проект не найден</div>
   return <div className='workspace-single'>
     <section>
       <div className='card' style={{marginBottom:12}}>
         <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div></div></div>
-        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div>
+        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div><AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
       </div>
 
       <div className='card'>
