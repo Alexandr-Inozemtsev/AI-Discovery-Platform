@@ -135,9 +135,10 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
         ctx={k: v['content'] for k, v in existing.items()}
         current = existing.get(artifact_type.value, {})
         sc = current.get('structured_content') or {}
-        qa = sc.get('ai_answers') or []
-        if qa:
-            ctx['AI_QA_CONTEXT'] = json.dumps(qa, ensure_ascii=False)
+        qa_items = sc.get('ai_questions') or []
+        answered = [q for q in qa_items if isinstance(q, dict) and str(q.get('answer','')).strip()]
+        if answered:
+            ctx['AI_QA_CONTEXT'] = json.dumps(answered, ensure_ascii=False)
         content = agent.run(p, ctx)
     except Exception as e:
         if 'openrouter' in str(e).lower() or '401' in str(e) or 'timeout' in str(e).lower():
@@ -287,28 +288,42 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
         raise HTTPException(400, 'Сначала заполните Контекст')
     art = repo.get_artifact(db, project_id, artifact_type)
     sc = (art.structured_content if art else {}) or {}
-    prompt = f"Сформируй 3-5 уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
+    prompt = f"Сформируй 3-5 новых уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
     raw = create_llm(db).generate(prompt)
     data = _json_from_llm_response(raw)
-    questions = data.get('questions') if isinstance(data, dict) else []
-    if not isinstance(questions, list): questions = []
-    sc['ai_questions'] = questions
+    new_questions = data.get('questions') if isinstance(data, dict) else []
+    if not isinstance(new_questions, list): new_questions = []
+    existing = sc.get('ai_questions') or []
+    existing_texts = {str(q.get('text','')).strip().lower() for q in existing if isinstance(q, dict)}
+    for q in new_questions:
+        txt = str(q).strip()
+        if txt and txt.lower() not in existing_texts:
+            existing.append({'id': f"q_{int(time.time()*1000)}_{len(existing)}", 'text': txt, 'answer': ''})
+            existing_texts.add(txt.lower())
+    sc['ai_questions'] = existing
     saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
-    return {'ok': True, 'questions': questions, 'structured_content': saved.structured_content}
+    return {'ok': True, 'questions': existing, 'structured_content': saved.structured_content}
 
 @router.post('/projects/{project_id}/stage/{artifact_type}/ask')
 def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
     art = repo.get_artifact(db, project_id, artifact_type)
     sc = (art.structured_content if art else {}) or {}
     msg = payload.get('message','').strip()
+    qid = payload.get('question_id')
     if not msg:
         raise HTTPException(400, 'Введите ответ для AI')
-    prompt = f"На этапе {artifact_type.value} предложи патч к артефакту на русском. Контекст ответа пользователя: {msg}. Верни JSON-объект patch."
+    questions = sc.get('ai_questions') or []
+    q_text = ''
+    for q in questions:
+        if isinstance(q, dict) and q.get('id') == qid:
+            q['answer'] = msg
+            q_text = q.get('text','')
+    sc['ai_questions'] = questions
+    prompt = f"На этапе {artifact_type.value} предложи патч к артефакту на русском. Вопрос: {q_text}. Ответ пользователя: {msg}. Верни JSON-объект patch."
     llm = create_llm(db)
     raw = llm.generate(prompt)
     patch = _json_from_llm_response(raw) or {'note': msg}
-    sc.setdefault('ai_questions', []).append(f'Уточнение: {msg}')
-    sc.setdefault('ai_answers', []).append({'question': msg, 'answered_at': str(time.time())})
+    sc.setdefault('ai_answers', []).append({'question_id': qid, 'question': q_text, 'answer': msg, 'answered_at': str(time.time())})
     sc['ai_patch'] = patch
     sc.setdefault('ai_history', []).append({'q': msg, 'raw': raw})
     saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
