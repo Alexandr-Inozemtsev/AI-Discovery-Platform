@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { ArtifactType, Project } from '../types/discovery'
 import AIActionBar from '../ui/components/AIActionBar'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 
 
@@ -94,7 +95,7 @@ const demoLinks=[
 export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
-  const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [goalDraft,setGoalDraft]=useState<any>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
+  const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [aiActionStatus,setAiActionStatus]=useState<Record<string,'idle'|'success'|'error'>>({}); const [goalDraft,setGoalDraft]=useState<any>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [goalQuestion,setGoalQuestion]=useState(''); const [goalPatch,setGoalPatch]=useState<any>(null); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
 
@@ -153,7 +154,7 @@ export default function ProjectPage(){
   const removeListItem=(key:'nonGoals'|'assumptions'|'risks'|'constraints'|'stakeholders',idx:number)=> updateGoal({[key]:toArray(goalData[key]).filter((_:any,i:number)=>i!==idx)} as any)
 
 
-  const runAiAction=async(key:string,fn:()=>Promise<void>)=>{try{setAiActionLoading(key); setMsg(''); await fn()}catch(e:any){setMsg(e?.message||'Ошибка AI действия')}finally{setAiActionLoading(null)}}
+  const runAiAction=async(key:string,fn:()=>Promise<void>)=>{try{setAiActionLoading(key); setMsg(''); await fn(); setAiActionStatus(s=>({...s,[key]:'success'}))}catch(e:any){setAiActionStatus(s=>({...s,[key]:'error'})); setMsg(e?.message||'Ошибка AI действия')}finally{setAiActionLoading(null)}}
   const aiActionsByStage:Record<string,{key:string;label:string;enabled:boolean;onClick?:()=>void}[]>={
     CONTEXT:[{key:'ctx_index',label:'Проиндексировать контекст',enabled:true,onClick:()=>runAiAction('ctx_index',runContextAnalyze)},{key:'ctx_extract',label:'Извлечь знания',enabled:true,onClick:()=>runAiAction('ctx_extract',runContextAnalyze)},{key:'ctx_cov',label:'Проверить покрытие знаний',enabled:true,onClick:()=>runAiAction('ctx_cov',async()=>{await runContextAnalyze()})}],
     PROBLEM:[{key:'pr_gen',label:'Сгенерировать проблему из контекста',enabled:true,onClick:()=>runAiAction('pr_gen',generateProblem)},{key:'pr_ask',label:'Задать уточняющие вопросы',enabled:true,onClick:()=>runAiAction('pr_ask',askProblem)},{key:'pr_root',label:'Найти корневые причины',enabled:true,onClick:()=>runAiAction('pr_root',generateProblem)},{key:'pr_upd',label:'Обновить по контексту',enabled:true,onClick:()=>runAiAction('pr_upd',generateProblem)}],
@@ -183,7 +184,7 @@ export default function ProjectPage(){
     <section>
       <div className='card' style={{marginBottom:12}}>
         <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div></div></div>
-        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
+        <div className='stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <button key={t.type} className={`stage-pill ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></button>})}</div><div className='sub'>Зависимости: {stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))).map(s=>humanStage[s]).join(' → ')||'Нет'} · Статус: {pipeline[active]?.status||'empty'}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/><div className='sub'>Последнее AI-действие: {aiActionLoading || Object.entries(aiActionStatus).slice(-1)[0]?.[1] || '—'}</div>
       </div>
 
       <div className='card'>
@@ -192,7 +193,7 @@ export default function ProjectPage(){
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span className='sub'>Версия: {ver??0}</span><span className='sub'>Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</span><button className='btn primary' onClick={save}>Сохранить</button><button className='btn' onClick={gen} disabled={busy}>Сгенерировать</button><button className='btn' onClick={validate} disabled={busy}>Проверить</button><a className='btn' href={`http://localhost:8000/api/projects/${projectId}/export/docx`}><Download size={16}/></a><button className='btn'><MoreHorizontal size={16}/></button></div>
         </div>
 
-        {active==='CONTEXT' ? <div className='context-workspace refined'>
+        <ErrorBoundary fallbackTitle='Ошибка рендера этапа'>{active==='CONTEXT' ? <div className='context-workspace refined'>
           <div className='context-left card'>
             <h4>Обзор проекта</h4>
             <input className='input' placeholder='Название инициативы' value={contextInput.initiative_name} onChange={e=>setContextInput({...contextInput,initiative_name:e.target.value})}/>
@@ -244,7 +245,7 @@ export default function ProjectPage(){
           <div className='card'><h4>AI Drafts</h4>{goalDraft ? (goalDraft.goal_options||[]).map((o:any,i:number)=><div key={i} className='card'><b>{o.title||`Вариант ${i+1}`}</b><div className='sub'>{o.description}</div><div style={{display:'flex',gap:8}}><button className='btn primary' onClick={()=>applyGoalOption(o,'select')}>Выбрать</button><button className='btn' onClick={()=>applyGoalOption(o,'merge')}>Объединить</button><button className='btn'>Редактировать</button></div></div>) : <div className='sub'>Сначала запустите генерацию целей.</div>}</div>
           <div className='card'><h4>Impact Map</h4><div className='impact-col'><span>Цель → Проблемы → KPI → Бизнес-эффект → Требования → Use Cases → Финальный БТ</span></div></div>
           <div className='card'><h4>AI Questions</h4>{(goalData.aiQuestions||[]).map((q:string,i:number)=><div key={i} className='sub'>• {q}</div>)}<input className='input' placeholder='Ответьте на вопрос AI...' value={goalQuestion} onChange={e=>setGoalQuestion(e.target.value)}/><button className='btn' onClick={askGoal}>Отправить AI</button>{goalPatch && <div className='card'><div className='sub'>AI предлагает patch</div><div style={{display:'flex',gap:8}}><button className='btn primary' onClick={applyGoalPatch}>Применить</button><button className='btn' onClick={()=>setGoalPatch(null)}>Отклонить</button></div></div>}</div>
-        </div> : <div style={{marginTop:14}}><h4 style={{margin:'0 0 6px'}}>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}
+        </div> : <div style={{marginTop:14}}><h4 style={{margin:'0 0 6px'}}>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}</ErrorBoundary>
         {active!=='CONTEXT' && <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Как работает Discovery в платформе</h4><div className='flow-grid'>{workflowStages.map(([key,text],idx)=><div key={key} className={`flow-step ${active===key?'active':''}`}><b>{idx+1}. {tabs.find(t=>t.type===key)?.label}</b><p className='sub'>{text}</p></div>)}</div><p className='sub'>AI постоянно использует контекст на всех этапах и обновляет артефакты при изменениях.</p></div>}
         {active==='FINAL_BT' && <div className='card' style={{marginTop:12}}><h4 style={{marginTop:0}}>Preview финального БТ</h4><div className='sub'>Sections, зависящие от Goal: BUSINESS_EFFECT, AS_IS, TO_BE, USE_CASES, REQUIREMENTS, RISKS, FINAL_BT.</div></div>}<div className='sub'>Autosave: {saving==='saving'?'Сохранение…':saving==='saved'?'Сохранено':saving==='error'?'Ошибка сохранения':'—'}</div>
         {msg && <p className={`sub ${msg==='Сохранено' || msg==='Генерация завершена' ? '' : ''}`}>{msg}</p>}

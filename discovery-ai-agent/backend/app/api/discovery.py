@@ -38,6 +38,9 @@ def _existing_artifacts_map(db: Session, project_id: str):
     return {a.artifact_type.value: {"content": a.content, "structured_content": a.structured_content} for a in artifacts}
 
 
+def _llm_error(stage:str, provider:str, model:str, error:str, details:str=''):
+    return {'ok':False,'error':error,'details':details,'stage':stage,'provider':provider,'model':model}
+
 def _json_from_llm_response(raw: str) -> dict:
     txt = (raw or '').strip()
     if not txt:
@@ -241,9 +244,19 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
         f"PROBLEM: {json.dumps((problem_art.structured_content if problem_art else {}), ensure_ascii=False)}. "
         f"Текущий GOAL: {json.dumps(prev, ensure_ascii=False)}"
     )
-    data = _json_from_llm_response(create_llm(db).generate(prompt))
+    llm = create_llm(db)
+    raw = ''
+    try:
+        raw = llm.generate(prompt)
+    except Exception as e:
+        raise HTTPException(400, _llm_error('GOAL', getattr(llm,'provider','unknown'), getattr(llm,'model','unknown'), 'Ошибка вызова LLM', str(e)))
+    data = _json_from_llm_response(raw)
     if not data:
-        raise HTTPException(400, 'LLM вернул некорректный JSON для цели')
+        prev_hist = merged.get('aiHistory') if 'merged' in locals() else []
+        merged = {**_default_goal_structured(), **prev}
+        merged['aiHistory'] = [*(prev_hist or []), {'createdAt': str(time.time()), 'raw_response': raw}][-30:]
+        repo.upsert_artifact(db, project_id, ArtifactType.GOAL, _goal_to_text(merged), structured_content=merged)
+        raise HTTPException(400, _llm_error('GOAL', getattr(llm,'provider','unknown'), getattr(llm,'model','unknown'), 'AI вернул неструктурированный ответ', raw[:1200]))
     merged = {**_default_goal_structured(), **prev}
     merged['aiQuestions'] = data.get('questions') or []
     merged['aiContradictions'] = data.get('contradictions') or []
