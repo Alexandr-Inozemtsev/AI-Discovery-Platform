@@ -223,34 +223,37 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    if not context_art or not (context_art.content or (context_art.structured_content or {}).get('context_input')):
+        raise HTTPException(400, 'Сначала заполните Контекст')
     problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
-    current = repo.get_artifact(db, project_id, ArtifactType.GOAL)
-    prev = (current.structured_content or _default_goal_structured()) if current else _default_goal_structured()
+    goal_art = repo.get_artifact(db, project_id, ArtifactType.GOAL)
+    prev = (goal_art.structured_content or _default_goal_structured()) if goal_art else _default_goal_structured()
+    warning = None
+    if not problem_art or not (problem_art.content or '').strip():
+        warning = 'Проблема не заполнена. Цели будут сформированы только по Контексту.'
     prompt = (
-        "Ты Goal Engine для Discovery. Отвечай только JSON на русском. "
-        "Верни структуру: {summary, smartAnalysis, questions, recommendations, contradictions, metrics, risks, nonGoals, detectedProblems, completeness}. "
-        f"Контекст: {json.dumps((context_art.structured_content if context_art else {}), ensure_ascii=False)}. "
-        f"Проблема: {json.dumps((problem_art.structured_content if problem_art else {}), ensure_ascii=False)}. "
-        f"Текущая цель: {json.dumps(prev, ensure_ascii=False)}"
+        "Ты AI-ассистент бизнес-аналитика. Верни строго JSON на русском языке без markdown. "
+        "Формат: {goal_options:[{title,description,focus,why_relevant,linked_problems,suggested_kpis,non_goals,assumptions}],"
+        "recommended_goal:{title,business_problem,desired_outcome,success_metrics,non_goals,assumptions,risks},"
+        "smart_analysis:{specific:{status,comment},measurable:{status,comment},achievable:{status,comment},relevant:{status,comment},time_bound:{status,comment}},"
+        "questions:[],contradictions:[],missing_information:[]}. "
+        f"Проект: {p.project_name}. CONTEXT: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}. "
+        f"PROBLEM: {json.dumps((problem_art.structured_content if problem_art else {}), ensure_ascii=False)}. "
+        f"Текущий GOAL: {json.dumps(prev, ensure_ascii=False)}"
     )
     data = _json_from_llm_response(create_llm(db).generate(prompt))
+    if not data:
+        raise HTTPException(400, 'LLM вернул некорректный JSON для цели')
     merged = {**_default_goal_structured(), **prev}
-    merged['aiSummary'] = data.get('summary') or merged.get('aiSummary')
-    merged['aiQuestions'] = data.get('questions') or merged.get('aiQuestions')
-    merged['aiRecommendations'] = data.get('recommendations') or merged.get('aiRecommendations')
-    merged['aiContradictions'] = data.get('contradictions') or merged.get('aiContradictions')
-    merged['aiDetectedProblems'] = data.get('detectedProblems') or merged.get('aiDetectedProblems')
-    merged['nonGoals'] = data.get('nonGoals') or merged.get('nonGoals')
-    merged['risks'] = data.get('risks') or merged.get('risks')
-    merged['successMetrics'] = data.get('metrics') or merged.get('successMetrics')
-    merged['smartAnalysis'] = data.get('smartAnalysis') or merged.get('smartAnalysis')
-    merged['completeness'] = int(data.get('completeness') or merged.get('completeness') or 0)
+    merged['aiQuestions'] = data.get('questions') or []
+    merged['aiContradictions'] = data.get('contradictions') or []
+    merged['aiRecommendations'] = data.get('missing_information') or []
     merged['status'] = 'AI_GENERATED'
     merged['updatedAt'] = str(time.time())
-    merged['affectedSections'] = ['Проблема','Бизнес-эффект','AS IS','TO BE','Use Cases','Требования','Риски','Финальный БТ']
+    merged['aiDrafts'] = data
     merged['aiHistory'] = [*((merged.get('aiHistory') or [])), {'createdAt': str(time.time()), 'response': data}][-30:]
     art = repo.upsert_artifact(db, project_id, ArtifactType.GOAL, _goal_to_text(merged), structured_content=merged)
-    return {'ok':True,'structured_content':art.structured_content,'version':art.version}
+    return {'ok':True,'warning':warning,'structured_content':art.structured_content,'draft':data,'version':art.version}
 
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
