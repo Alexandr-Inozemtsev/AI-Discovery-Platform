@@ -88,6 +88,7 @@ h1{font-size:var(--ui-font-xl)}h2{font-size:18px}h3{font-size:16px}h4{font-size:
 .context-field__label{font-size:11px;color:var(--ui-text-muted);margin-bottom:4px}
 .context-field__value{font-size:13px;font-weight:600;color:var(--ui-text);line-height:1.4}
 .context-field__placeholder{color:var(--ui-text-soft);font-weight:500}
+.context-field__helper{font-size:11px;color:var(--ui-text-muted);margin-top:6px;line-height:1.4}
 .autosave-row{margin-top:10px;font-size:12px;color:var(--ui-text-muted);display:flex;align-items:center;gap:6px}
 .source-section{margin-top:12px}.source-section__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}.source-section__title{font-size:13px;font-weight:700;color:var(--ui-text)}
 .hidden-input{display:none}
