@@ -192,12 +192,20 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     links = payload.get('links') or []
     documents = payload.get('documents') or []
     existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    overview_for_ai = {
+        'Краткое описание': context_input.get('short_description') or '',
+        'Цель продукта / ожидаемый результат': context_input.get('product_goal') or context_input.get('initiative_goal') or '',
+        'Бизнес-направление': context_input.get('business_domain') or '',
+        'Бизнес-владелец процесса': context_input.get('business_process_owner') or context_input.get('process_owner') or '',
+        'Ответственный за Discovery': context_input.get('discovery_responsible') or context_input.get('discovery_owner') or ''
+    }
     prompt = (
         'Верни только JSON и строго на русском языке. '
         'Это этап ingestion, без рисков/рекомендаций/гипотез/TO-BE. '
         'Структура JSON: '
         '{"процессы":[],"системы":[],"роли":[],"интеграции":[],"kpi":[],"бизнес_сущности":[],"документы":[],"термины":[],"покрытие":{"документы":false,"системы":false,"процессы":false,"bpmn":false,"kpi":false,"sla":false}}. '
-        f'Проект: {p.project_name}. Overview: {json.dumps(context_input, ensure_ascii=False)}. '
+        f'Проект: {p.project_name}. Обзор проекта: {json.dumps(overview_for_ai, ensure_ascii=False)}. '
+        f'Технический context_input (для совместимости): {json.dumps(context_input, ensure_ascii=False)}. '
         f'Ссылки: {json.dumps(links, ensure_ascii=False)}. Документы: {json.dumps(documents, ensure_ascii=False)}'
     )
     llm = create_llm(db)
@@ -311,7 +319,7 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     if not data:
         main_problem = (prev.get('main_problem') or '').strip()
         context_input = (context_art.structured_content or {}).get('context_input') or {}
-        initiative = str(context_input.get('initiative_name') or '').strip()
+        initiative = str(p.project_name or '').strip()
         summary = str(context_input.get('short_description') or '').strip()
         answered_lines = [
             f"{i+1}) {q.get('text', '').strip()} — {q.get('answer', '').strip()}"
