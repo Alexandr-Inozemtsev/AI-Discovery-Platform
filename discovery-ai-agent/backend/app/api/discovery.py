@@ -188,39 +188,43 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     p = repo.get_project(db, project_id)
     if not p:
         raise HTTPException(404, 'Проект не найден')
+    existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     context_input = payload.get('context_input') or {}
     links = payload.get('links') or []
     documents = payload.get('documents') or []
-    existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
-    overview_for_ai = {
-        'Краткое описание': context_input.get('short_description') or '',
-        'Цель продукта / ожидаемый результат': context_input.get('product_goal') or context_input.get('initiative_goal') or '',
-        'Бизнес-направление': context_input.get('business_domain') or '',
-        'Бизнес-владелец процесса': context_input.get('business_process_owner') or context_input.get('process_owner') or '',
-        'Ответственный за Discovery': context_input.get('discovery_responsible') or context_input.get('discovery_owner') or ''
+    orchestrator = AgentOrchestrator(create_llm(db))
+    agent = orchestrator.get_agent(ArtifactType.CONTEXT.value)
+    if not agent or not hasattr(agent, 'analyze'):
+        raise HTTPException(500, 'ContextIngestionAgent не подключен в AgentOrchestrator')
+    prev_structured = existing.structured_content if existing and isinstance(existing.structured_content, dict) else {}
+    previous_context = {
+        'context_input': prev_structured.get('context_input') or {},
+        'extracted_knowledge': prev_structured.get('extracted_knowledge') or {},
+        'knowledge_history': prev_structured.get('knowledge_history') or [],
+        'knowledge_coverage': prev_structured.get('knowledge_coverage') or {},
+        'missing_information': (prev_structured.get('extracted_knowledge') or {}).get('missing_information') or []
     }
-    prompt = (
-        'Верни только JSON и строго на русском языке. '
-        'Это этап ingestion, без рисков/рекомендаций/гипотез/TO-BE. '
-        'Структура JSON: '
-        '{"процессы":[],"системы":[],"роли":[],"интеграции":[],"kpi":[],"бизнес_сущности":[],"документы":[],"термины":[],"покрытие":{"документы":false,"системы":false,"процессы":false,"bpmn":false,"kpi":false,"sla":false}}. '
-        f'Проект: {p.project_name}. Обзор проекта: {json.dumps(overview_for_ai, ensure_ascii=False)}. '
-        f'Технический context_input (для совместимости): {json.dumps(context_input, ensure_ascii=False)}. '
-        f'Ссылки: {json.dumps(links, ensure_ascii=False)}. Документы: {json.dumps(documents, ensure_ascii=False)}'
-    )
-    llm = create_llm(db)
-    raw = llm.generate(prompt)
-    extracted = _json_from_llm_response(raw)
+    try:
+        analysis = agent.analyze(
+            p,
+            {'context_input': context_input, 'documents': documents, 'links': links},
+            previous_context=previous_context
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    extracted = analysis.get('extracted_knowledge') or {}
     if not extracted:
         raise HTTPException(400, 'LLM вернул некорректный JSON')
     history = (existing.structured_content or {}).get('knowledge_history', []) if existing else []
-    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links}
+    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links, 'source_trace': analysis.get('source_trace', {})}
     history.append(snapshot)
     structured = {
         'context_input': context_input,
         'documents': documents,
         'links': links,
         'extracted_knowledge': extracted,
+        'source_trace': analysis.get('source_trace') or {},
+        'overview_for_ai': analysis.get('overview_for_ai') or {},
         'knowledge_history': history[-30:],
         'indexing_status': 'completed'
     }
