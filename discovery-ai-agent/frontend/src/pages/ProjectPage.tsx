@@ -2,7 +2,7 @@ import { Download, MoreHorizontal, Database, RefreshCcw, FileText, FileSpreadshe
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { ApiError, api } from '../api/client'
 import { ArtifactType, Project } from '../types/discovery'
 import AIActionBar from '../ui/components/AIActionBar'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -98,10 +98,21 @@ export default function ProjectPage(){
   const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [aiActionStatus,setAiActionStatus]=useState<Record<string,'idle'|'success'|'error'>>({}); const [goalDraft,setGoalDraft]=useState<any>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [goalQuestion,setGoalQuestion]=useState(''); const [goalPatch,setGoalPatch]=useState<any>(null); const [stageQuestion,setStageQuestion]=useState(''); const [stagePatch,setStagePatch]=useState<any>(null); const [questionAnswers,setQuestionAnswers]=useState<Record<string,string>>({}); const [questionGenLoading,setQuestionGenLoading]=useState(false); const [answerLoadingId,setAnswerLoadingId]=useState<string|null>(null); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
+  const ensureRuntimeReady = async () => {
+    try {
+      const status = await api<any>('/runtime/status')
+      if (!status?.llm?.ready_for_generation) {
+        throw new ApiError(400, status?.llm?.human_message || 'LLM не готова к генерации', status?.llm)
+      }
+    } catch (e) {
+      if (e instanceof ApiError) throw e
+      throw new ApiError(0, 'Backend недоступен. Запустите backend на порту 8000 или проверьте VITE_API_URL.')
+    }
+  }
 
   const loadCompletion=async()=>{setCmp(await api<any>(`/projects/${projectId}/completion`).catch(()=>null)); const arts=await api<any[]>(`/projects/${projectId}/artifacts`).catch(()=>[]); const p:Record<string,any>={}; arts.forEach(a=>p[a.artifact_type]=a.structured_content?.pipeline_meta||{status:(a.content||'').trim()?'ready':'empty',version:a.version,updated_at:a.updated_at,source_artifacts:[],source_versions:{}}); setPipeline(p)}
   const load=async()=>{try{setProject(await api<Project>(`/projects/${projectId}`)); await loadCompletion()}catch{setMsg('Проект не найден')}}
-  const loadStageQuestions=async()=>{try{const r=await api<any>(`/projects/${projectId}/stage/${active}/questions`,{method:'POST'}); if(active==='PROBLEM') setProblemDraft((p:any)=>({...p, clarifying_questions:r.questions||[]})); else setStructured((st:any)=>({...st, ai_questions:r.questions||[]})); const mapped:Record<string,string>={}; (Array.isArray(r.questions)?r.questions:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...prev,...mapped})); return r}catch{throw new Error('Не удалось сгенерировать вопросы')}}
+  const loadStageQuestions=async()=>{try{await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/stage/${active}/questions`,{method:'POST'}); if(active==='PROBLEM') setProblemDraft((p:any)=>({...p, clarifying_questions:r.questions||[]})); else setStructured((st:any)=>({...st, ai_questions:r.questions||[]})); const mapped:Record<string,string>={}; (Array.isArray(r.questions)?r.questions:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...prev,...mapped})); return r}catch(e:any){throw new Error(e?.message||'Не удалось сгенерировать вопросы')}}
   const regenerateStageQuestions=async()=>{try{setQuestionGenLoading(true); await loadStageQuestions(); setMsg('Дополнительные вопросы сгенерированы')}catch(e:any){setMsg(e?.message||'Ошибка генерации вопросов')}finally{setQuestionGenLoading(false)}}
   const loadArtifact=async(type:ArtifactType)=>{try{const a=await api<any>(`/projects/${projectId}/artifacts/${type}`);setContent(a.rendered_html||a.content||'');setRichJson(a.rich_content_json||null);setStructured(a.structured_content||{});setVer(a.version);setUpdated(a.updated_at); if(type==='CONTEXT'){const sc=a.structured_content||{}; setContextInput(sc?.context_input||emptyInput); setDocuments(sc?.uploaded_files||sc?.documents||[]); setLinks(sc?.links||[]); setKnowledge(sc?.extracted_knowledge||null); setContextReady(true)} if(type==='PROBLEM'){const sc=a.structured_content||{}; const qs=(sc.ai_questions || sc.clarifying_questions || []); setProblemDraft({...problemDraft,...sc, clarifying_questions: qs}); const mapped:Record<string,string>={}; (Array.isArray(qs)?qs:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...mapped,...prev}))} if(type==='GOAL'){setGoalDraft((a.structured_content||{}).aiDrafts||null)}}catch{setContent('');setRichJson(null);setStructured({});setVer(null);setUpdated(''); if(type==='CONTEXT'){setContextInput(emptyInput); setDocuments([]); setLinks([]); setKnowledge(null); setContextReady(true); try{await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:{context_input:emptyInput,links:[],uploaded_files:[],extracted_knowledge:null,knowledge_coverage:{},indexing_status:'idle'}})})}catch{}}}}
   useEffect(()=>{load(); if(projectId) localStorage.setItem('lastOpenedProjectId', projectId)},[projectId]);
@@ -115,8 +126,8 @@ export default function ProjectPage(){
   }catch{}}
 
   const save=async()=>{try{setSaving('saving');const baseMeta={stage:active,status:'manually_edited',source_artifacts:stageOrder.slice(0,Math.max(0,stageOrder.indexOf(active))),source_versions:{},version:ver||0,updated_at:new Date().toISOString(),generated_at:null}; const payload=active==='GOAL'?{content:smartToText(goalData),structured_content:{...goalData,pipeline_meta:baseMeta},rich_content_json:richJson,rendered_html:content}:active==='CONTEXT'?{content:'',structured_content:{...buildContextPayload(),pipeline_meta:baseMeta},rich_content_json:null,rendered_html:null}:{content,structured_content:{pipeline_meta:baseMeta},rich_content_json:richJson,rendered_html:content}; const a=await api<any>(`/projects/${projectId}/artifacts/${active}`,{method:'PUT',body:JSON.stringify(payload)});setVer(a.version);setUpdated(a.updated_at);setMsg('Сохранено');setSaving('saved'); await markDependentsStale(active,a.version); await loadCompletion()}catch{setMsg('Ошибка сохранения');setSaving('error')}}
-  const gen=async()=>{try{setBusy(true);const a=await api<any>(`/projects/${projectId}/generate/${active}`,{method:'POST'});setContent(a.content);setStructured({});setVer(a.version);setUpdated(a.updated_at);setMsg('Генерация завершена');await loadCompletion()}catch{setMsg('Ошибка сохранения')}finally{setBusy(false)}}
-  const validate=async()=>{try{setBusy(true);await api<any>(`/projects/${projectId}/validate`,{method:'POST'});setMsg('Сохранено');await loadCompletion()}catch{setMsg('Ошибка сохранения')}finally{setBusy(false)}}
+  const gen=async()=>{try{setBusy(true);await ensureRuntimeReady();const a=await api<any>(`/projects/${projectId}/generate/${active}`,{method:'POST'});setContent(a.content);setStructured({});setVer(a.version);setUpdated(a.updated_at);setMsg('Генерация завершена');await loadCompletion()}catch(e:any){setMsg(e?.message||'Ошибка сохранения')}finally{setBusy(false)}}
+  const validate=async()=>{try{setBusy(true);await ensureRuntimeReady();await api<any>(`/projects/${projectId}/validate`,{method:'POST'});setMsg('Сохранено');await loadCompletion()}catch(e:any){setMsg(e?.message||'Ошибка сохранения')}finally{setBusy(false)}}
   useEffect(()=>{if(active==='GOAL' || active==='CONTEXT' || active==='PROBLEM') return; if(!content) return; const t=setTimeout(()=>{save()},2000); return ()=>clearTimeout(t)},[content])
   useEffect(()=>{if(active!=='PROBLEM') return; const t=setTimeout(()=>{saveProblem()},900); return ()=>clearTimeout(t)},[problemDraft])
   useEffect(()=>{if(active!=='CONTEXT' || !contextReady) return; const t=setTimeout(()=>{saveContextInput()},800); return ()=>clearTimeout(t)},[contextInput,documents,links,knowledge,contextReady])
@@ -142,7 +153,7 @@ export default function ProjectPage(){
   })
 
   const saveContextInput=async()=>{try{if(!projectId) return; setSaving('saving'); const a=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:buildContextPayload()})}); setVer(a.version); setUpdated(a.updated_at); setStructured(a.structured_content||{}); setSaving('saved')}catch{setSaving('error'); setMsg('Ошибка сохранения контекста')}}
-  const runContextAnalyze=async()=>{try{setThinking(true); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents,links})}); const now=new Date().toISOString(); const nextDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,ai_status:'проиндексирован'})); setDocuments(nextDocs); setKnowledge(r.extracted_knowledge); setStructured({...structured,indexing_status:r.indexing_status||'completed',indexed_at:now}); setMsg('Индексация знаний завершена'); await saveContextInput()}catch{setMsg('Ошибка индексации')}finally{setThinking(false)}}
+  const runContextAnalyze=async()=>{try{setThinking(true); await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents,links})}); const now=new Date().toISOString(); const nextDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,ai_status:'проиндексирован'})); setDocuments(nextDocs); setKnowledge(r.extracted_knowledge); setStructured({...structured,indexing_status:r.indexing_status||'completed',indexed_at:now}); setMsg('Индексация знаний завершена'); await saveContextInput()}catch(e:any){setMsg(e?.message||'Ошибка индексации')}finally{setThinking(false)}}
 
 
   const generateProblem=async()=>{
@@ -158,7 +169,7 @@ export default function ProjectPage(){
       })
       const nextDraft = { ...problemDraft, ai_questions: questionsWithAnswers, clarifying_questions: questionsWithAnswers }
       await api<any>(`/projects/${projectId}/artifacts/PROBLEM`,{method:'PUT',body:JSON.stringify({content:nextDraft.problem_statement||nextDraft.main_problem||'',structured_content:nextDraft})})
-      const r=await api<any>(`/projects/${projectId}/problem/generate`,{method:'POST'})
+      await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/problem/generate`,{method:'POST'})
       setProblemDraft(r.structured_content||nextDraft)
       setMsg('Черновик проблемы сгенерирован на основе контекста и ответов')
     }catch{
