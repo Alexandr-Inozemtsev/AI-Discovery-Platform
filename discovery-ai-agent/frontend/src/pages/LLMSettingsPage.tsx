@@ -29,7 +29,7 @@ export default function LLMSettingsPage() {
   const test = async () => { try { await api('/settings/llm/test', { method: 'POST', body: JSON.stringify(f) }); await load(); setMsg('Проверка завершена') } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка проверки') } }
 
   return <PageContainer><Card><h2>LLM настройки</h2><p className='sub'>Provider — поставщик LLM-модели. Base URL — адрес API совместимого с OpenAI. Model — техническое имя модели. API Key — секретный ключ доступа. Timeout — сколько секунд ждать ответ. Temperature — насколько вариативным будет ответ.</p>
-    <div style={{ display: 'flex', gap: 8, margin: '12px 0', flexWrap: 'wrap' }}><Button variant='soft' onClick={() => applyPreset('openrouter')}>Preset OpenRouter</Button><Button variant='soft' onClick={() => applyPreset('corporate')}>Preset Corporate</Button><Button variant='soft' onClick={() => applyPreset('mock')}>Preset Mock</Button></div>
+    <div className='ui-actions'><Button variant='soft' onClick={() => applyPreset('openrouter')}>Preset OpenRouter</Button><Button variant='soft' onClick={() => applyPreset('corporate')}>Preset Corporate</Button><Button variant='soft' onClick={() => applyPreset('mock')}>Preset Mock</Button></div>
     <div className='goal-grid'>
       <select className='ui-input' value={f.provider} onChange={e => setF({ ...f, provider: e.target.value })}><option value='mock'>Mock</option><option value='openrouter'>OpenRouter</option><option value='corporate'>Corporate</option></select>
       <Input value={f.base_url || ''} onChange={e => setF({ ...f, base_url: e.target.value })} placeholder='https://openrouter.ai/api/v1' />
@@ -37,7 +37,7 @@ export default function LLMSettingsPage() {
       <Input value={f.api_key || ''} onChange={e => setF({ ...f, api_key: e.target.value })} placeholder='API Key' />
       <Input type='number' value={f.timeout_seconds} onChange={e => setF({ ...f, timeout_seconds: Number(e.target.value) })} placeholder='Timeout' />
       <Input type='number' step='0.1' value={f.temperature} onChange={e => setF({ ...f, temperature: Number(e.target.value) })} placeholder='Temperature' />
-    </div><div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}><Button variant='primary' onClick={save}>Сохранить</Button><Button onClick={test}>Проверить подключение</Button></div></Card>
-  <Card><h3>Статус подключения</h3><StatusIndicator status={status} /><p className='sub' style={{ marginTop: 8 }}>Provider: {f.provider} · Base URL: {f.base_url || '—'} · Model: {f.model || '—'} · Actual: {f.last_actual_model || '—'} · key_tail: {f.key_tail || '—'} · latency: {f.last_latency_ms || 0} ms</p><p className='sub'>{f.human_message || '—'}</p>{f.last_error ? <p className='sub'>Ошибка: {f.last_error}</p> : null}{msg ? <p style={{ marginTop: 8 }}>{msg}</p> : null}</Card>
+    </div><div className='ui-actions'><Button variant='primary' onClick={save}>Сохранить</Button><Button onClick={test}>Проверить подключение</Button></div></Card>
+  <Card><h3>Статус подключения</h3><StatusIndicator status={status} /><p className='sub status-meta'>Provider: {f.provider} · Base URL: {f.base_url || '—'} · Model: {f.model || '—'} · Actual: {f.last_actual_model || '—'} · key_tail: {f.key_tail || '—'} · latency: {f.last_latency_ms || 0} ms</p><p className='sub'>{f.human_message || '—'}</p>{f.last_error ? <p className='sub'>Ошибка: {f.last_error}</p> : null}{msg ? <p className='status-meta'>{msg}</p> : null}</Card>
   </PageContainer>
 }
