@@ -66,3 +66,19 @@ h1{font-size:var(--ui-font-xl)}h2{font-size:18px}h3{font-size:16px}h4{font-size:
 .ui-textarea--lg{min-height:80px}
 .ui-textarea--md{min-height:70px}
 .status-meta{margin-top:8px}
+.context-layout{display:grid;grid-template-columns:1fr 1.55fr 1.1fr .85fr 1.05fr;gap:12px;align-items:start}
+@media (max-width:1600px){.context-layout{grid-template-columns:1fr 1.3fr 1fr}}
+@media (max-width:1100px){.context-layout{grid-template-columns:1fr}}
+.top-progress{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.progress{height:6px;background:#e5e7eb;border-radius:999px;overflow:hidden;min-width:180px}.progress>div{height:100%;background:var(--ui-primary)}
+.sources-card{border:1px solid var(--ui-border-soft);border-radius:12px;padding:10px 12px;background:#fff;margin-top:10px}
+.sources-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.source-list{display:flex;flex-direction:column;gap:0}
+.source-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:54px;padding:10px 0;border-bottom:1px solid #EEF2F7}
+.source-row:last-child{border-bottom:0}.source-main{display:flex;align-items:center;gap:10px;min-width:0}.source-title{font-size:13px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.source-meta{font-size:11px;color:#64748B;margin-top:2px}
+.source-ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center}
+.source-ico.pdf{background:#FEF2F2;color:#EF4444}.source-ico.doc{background:#EFF6FF;color:#2563EB}.source-ico.xls{background:#ECFDF5;color:#16A34A}
+.coverage-list{display:flex;flex-direction:column;gap:10px}.coverage-item{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}.coverage-left{display:inline-flex;align-items:center;gap:8px}
+.coverage-left .ok{color:#16a34a}.coverage-left .warn{color:#d97706}.coverage-left .bad{color:#dc2626}
+.hint-card{background:#EFF6FF;border:1px solid #DBEAFE;border-radius:12px;padding:10px 12px;margin-top:10px}
+.ai-assistant{display:flex;flex-direction:column;gap:10px}.assistant-card{border:1px solid #E2E8F0;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
