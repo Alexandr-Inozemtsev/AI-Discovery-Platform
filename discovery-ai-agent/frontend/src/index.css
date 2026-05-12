@@ -64,3 +64,6 @@ button, input, textarea, select { font: inherit; }
   .ui-content { padding: var(--ui-space-4); }
   .goal-grid { grid-template-columns: 1fr; }
 }
+
+.ai-question-card{display:flex;flex-direction:column;gap:8px}
+.problem-right .ai-sections{display:flex;flex-direction:column;gap:12px}
