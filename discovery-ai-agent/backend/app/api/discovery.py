@@ -239,6 +239,29 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     if isinstance(gen_list, list) and gen_list:
         merged['generated_problem_list'] = gen_list
         merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i,x in enumerate(gen_list)])
+    if not (merged.get('problem_statement') or '').strip():
+        strict_items: list[str] = []
+        main_problem = str(merged.get('main_problem') or '').strip()
+        if main_problem:
+            strict_items.append(main_problem)
+        for p_item in (merged.get('user_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('pain') or '').strip():
+                strict_items.append(str(p_item.get('pain')).strip())
+        for p_item in (merged.get('business_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('description') or '').strip():
+                strict_items.append(str(p_item.get('description')).strip())
+        for q in answered_questions:
+            txt = str(q.get('answer') or '').strip()
+            if txt:
+                strict_items.append(f"Подтверждено пользователем: {txt}")
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in strict_items:
+            key = item.lower()
+            if key not in seen:
+                seen.add(key)
+                dedup.append(item)
+        merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i, x in enumerate(dedup[:8])]) if dedup else ''
     art = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, merged.get('problem_statement') or merged.get('main_problem') or '', structured_content=merged)
     return {'ok':True,'structured_content':art.structured_content,'version':art.version}
 
@@ -331,6 +354,9 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
         if txt and txt.lower() not in existing_texts:
             existing.append({'id': f"q_{int(time.time()*1000)}_{len(existing)}", 'text': txt, 'answer': ''})
             existing_texts.add(txt.lower())
+        if len(existing) >= 6:
+            break
+    existing = existing[:6]
     sc['ai_questions'] = existing
     saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
     return {'ok': True, 'questions': existing, 'structured_content': saved.structured_content}
