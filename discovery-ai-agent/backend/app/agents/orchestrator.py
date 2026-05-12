@@ -1,4 +1,5 @@
 from app.agents.business_effect_agent import BusinessEffectAgent
+from app.agents.context_ingestion_agent import ContextIngestionAgent
 from app.agents.goal_agent import GoalAgent
 from app.agents.problem_agent import ProblemAgent
 from app.agents.requirements_agent import RequirementsAgent
@@ -11,6 +12,7 @@ class AgentOrchestrator:
         llm = llm or MockLLMClient()
         self._agents = {
             "PROBLEM": ProblemAgent(llm),
+            "CONTEXT": ContextIngestionAgent(llm),
             "GOAL": GoalAgent(llm),
             "BUSINESS_EFFECT": BusinessEffectAgent(llm),
             "USE_CASES": UseCaseAgent(llm),
