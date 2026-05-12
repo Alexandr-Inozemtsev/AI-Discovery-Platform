@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import Card from '../ui/components/Card'
 import Button from '../ui/components/Button'
+import ButtonLink from '../ui/components/ButtonLink'
 import Input from '../ui/components/Input'
 import PageContainer from '../ui/components/PageContainer'
 import { Project } from '../types/discovery'
@@ -20,16 +21,16 @@ export default function ProjectsPage(){
   return <PageContainer>
     <h1 className='page-title'>Проекты</h1>
     <Card className='projects-filter'>
-      <div style={{display:'flex',gap:8}}><Input placeholder='Поиск' value={q} onChange={e=>setQ(e.target.value)} /><select className='ui-input' value={status} onChange={e=>setStatus(e.target.value)}><option value='ALL'>Все</option><option value='DRAFT'>DRAFT</option><option value='IN_PROGRESS'>IN_PROGRESS</option><option value='BT_READY'>BT_READY</option><option value='APPROVED'>APPROVED</option></select></div>
-      <div style={{display:'flex',gap:8}}><Input placeholder='Название проекта' value={name} onChange={e=>setName(e.target.value)} /><Button variant='primary' onClick={create}><Plus size={16}/>Создать проект</Button></div>
+      <div className='ui-actions'><Input placeholder='Поиск' value={q} onChange={e=>setQ(e.target.value)} /><select className='ui-input' value={status} onChange={e=>setStatus(e.target.value)}><option value='ALL'>Все</option><option value='DRAFT'>DRAFT</option><option value='IN_PROGRESS'>IN_PROGRESS</option><option value='BT_READY'>BT_READY</option><option value='APPROVED'>APPROVED</option></select></div>
+      <div className='ui-actions'><Input placeholder='Название проекта' value={name} onChange={e=>setName(e.target.value)} /><Button variant='primary' onClick={create}><Plus size={16}/>Создать проект</Button></div>
     </Card>
     <Card>
-      <table style={{width:'100%'}}><thead><tr><th align='left'>Название</th><th align='left'>Статус</th><th align='left'>Действия</th></tr></thead><tbody>
-      {filtered.map(p=><tr key={p.id}><td>{p.project_name}</td><td>{p.status}</td><td style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+      <table className='ui-table'><thead><tr><th align='left'>Название</th><th align='left'>Статус</th><th align='left'>Действия</th></tr></thead><tbody>
+      {filtered.map(p=><tr key={p.id}><td>{p.project_name}</td><td><span className='ui-badge muted'>{p.status}</span></td><td className='ui-row-actions'>
         <Button onClick={()=>navigate(`/projects/${p.id}`)}>Открыть</Button>
         <Button onClick={()=>api('/projects',{method:'POST',body:JSON.stringify({project_name:`${p.project_name} (копия)`})}).then(load)}>Клонировать</Button>
         <Button onClick={()=>api(`/projects/${p.id}`,{method:'PATCH',body:JSON.stringify({status:'DRAFT'})}).then(load)}>Архивировать</Button>
-        <a className='ui-btn secondary' href={`http://localhost:8000/api/projects/${p.id}/export/docx`}>Экспорт</a>
+        <ButtonLink variant='secondary' size='sm' href={`http://localhost:8000/api/projects/${p.id}/export/docx`}>Экспорт</ButtonLink>
         <Button onClick={()=>del(p.id)}>Удалить</Button>
       </td></tr>)}
       </tbody></table>
