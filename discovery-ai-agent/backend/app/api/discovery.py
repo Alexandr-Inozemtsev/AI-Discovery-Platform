@@ -19,6 +19,7 @@ import re
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = None
 critic = None
+LLM_STATUS_SET = {'mock','not_configured','connected','error','timeout','unauthorized','model_not_found','backend_error'}
 
 SECTION_META = {
     "CONTEXT": ("Контекст", True), "PROBLEM": ("Проблема", True), "GOAL": ("Цель", True), "BUSINESS_EFFECT": ("Бизнес-эффект", True),
@@ -52,6 +53,101 @@ def _json_from_llm_response(raw: str) -> dict:
         if not m:
             return {}
         return json.loads(m.group(0))
+
+def _mask_key(key: str | None) -> tuple[str, str]:
+    k = (key or '').strip()
+    if not k:
+        return '', ''
+    tail = k[-4:] if len(k) >= 4 else k
+    return f"********{tail}", tail
+
+def _status_message(status: str) -> str:
+    messages = {
+        'mock': 'Mock режим активен. Генерация доступна без внешнего провайдера.',
+        'not_configured': 'LLM не настроена. Заполните Provider, Base URL, Model и API Key.',
+        'connected': 'Подключение к LLM успешно.',
+        'error': 'Ошибка подключения к LLM. Проверьте настройки.',
+        'timeout': 'Превышено время ожидания ответа от LLM.',
+        'unauthorized': 'Ошибка авторизации. Проверьте API key.',
+        'model_not_found': 'Модель недоступна или указана неверно.',
+        'backend_error': 'Ошибка backend при проверке LLM.'
+    }
+    return messages.get(status, 'Состояние LLM неизвестно.')
+
+def _normalize_llm_status(raw_status: str | None, last_error: str | None = None) -> str:
+    rs = (raw_status or '').lower().strip()
+    err = (last_error or '').lower()
+    if rs in LLM_STATUS_SET:
+        return rs
+    if rs in {'ok', 'success'}:
+        return 'connected'
+    if rs in {'config', 'not_ready'}:
+        return 'not_configured'
+    if '401' in err or '403' in err or 'unauthorized' in err:
+        return 'unauthorized'
+    if 'timeout' in err or 'timed out' in err:
+        return 'timeout'
+    if 'model' in err and ('not found' in err or 'does not exist' in err):
+        return 'model_not_found'
+    return 'error' if rs else 'not_configured'
+
+def _serialize_llm_settings_row(s: LLMSettings | None) -> dict:
+    provider = ((s.provider if s else 'mock') or 'mock').lower()
+    base_url = (s.base_url if s else 'https://openrouter.ai/api/v1') or ''
+    model = (s.model if s else 'deepseek/deepseek-chat-v3-0324:free') or ''
+    timeout_seconds = int((s.timeout_seconds if s else 120) or 120)
+    temperature = float((s.temperature if s else 0.2) or 0.2)
+    masked, tail = _mask_key(s.api_key if s else '')
+    has_required = provider == 'mock' or (bool(base_url.strip()) and bool(model.strip()) and bool(tail))
+    raw_status = (s.last_connection_status if s else None) or ('mock' if provider == 'mock' else 'not_configured')
+    status = _normalize_llm_status(raw_status, s.last_error if s else None)
+    if not has_required and provider != 'mock':
+        status = 'not_configured'
+    return {
+        'ok': True,
+        'provider': provider,
+        'base_url': base_url,
+        'model': model,
+        'api_key': masked,
+        'key_tail': tail,
+        'timeout_seconds': timeout_seconds,
+        'temperature': temperature,
+        'last_connection_status': status,
+        'last_latency_ms': (s.last_latency_ms if s else 0) or 0,
+        'last_actual_model': (s.last_actual_model if s else '') or '',
+        'last_error': (s.last_error if s else None),
+        'human_message': _status_message(status)
+    }
+
+def _runtime_status(db: Session) -> dict:
+    s = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
+    payload = _serialize_llm_settings_row(s)
+    configured = payload['provider'] == 'mock' or (bool(payload['base_url']) and bool(payload['model']) and bool(payload['key_tail']))
+    ready = payload['provider'] == 'mock' or (configured and payload['last_connection_status'] == 'connected')
+    return {
+        'backend': {'status': 'ok'},
+        'llm': {
+            'provider': payload['provider'],
+            'configured': configured,
+            'ready_for_generation': ready,
+            'last_connection_status': payload['last_connection_status'],
+            'model': payload['model'],
+            'last_actual_model': payload['last_actual_model'],
+            'last_error': payload['last_error'],
+            'human_message': payload['human_message']
+        }
+    }
+
+def _ensure_llm_ready(db: Session):
+    status = _runtime_status(db)
+    if status['llm']['ready_for_generation']:
+        return
+    raise HTTPException(400, {
+        'ok': False,
+        'error': 'LLM_NOT_READY',
+        'human_message': 'LLM не настроена. Откройте Настройки → LLM настройки и проверьте подключение.',
+        'details': status['llm']
+    })
 
 @router.get('/projects', response_model=list[ProjectRead])
 def get_projects(db: Session = Depends(get_db)): return repo.list_projects(db)
@@ -88,6 +184,7 @@ def put_artifact(project_id: str, artifact_type: ArtifactType, payload: Artifact
 
 @router.post('/projects/{project_id}/context/analyze')
 def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p:
         raise HTTPException(404, 'Проект не найден')
@@ -125,6 +222,7 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
 
 @router.post('/projects/{project_id}/generate/{artifact_type}', response_model=ArtifactRead)
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
     orchestrator = AgentOrchestrator(create_llm(db))
@@ -148,6 +246,7 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
 
 @router.post('/projects/{project_id}/validate', response_model=ArtifactRead)
 def validate_project(project_id: str, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
     critic = CriticAgent(create_llm(db))
@@ -188,6 +287,7 @@ def _default_problem_structured():
 
 @router.post('/projects/{project_id}/problem/generate')
 def generate_problem(project_id: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
@@ -195,16 +295,43 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
         raise HTTPException(400, 'Сначала заполните Контекст или загрузите источники знаний.')
     problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
     prev = (problem_art.structured_content or _default_problem_structured()) if problem_art else _default_problem_structured()
+    answered_questions = [
+        q for q in (prev.get('ai_questions') or prev.get('clarifying_questions') or [])
+        if isinstance(q, dict) and str(q.get('answer', '')).strip()
+    ]
     prompt=(
         "Ты AI-ассистент бизнес-аналитика в Discovery-процессе. Отвечай строго на русском языке. "
         "На этапе 'Проблема' помоги сформулировать только проблему, без TO BE/решений/требований. Учитывай: 1) ручной текст PO в main_problem, 2) только отвеченные ai_questions, 3) контекст. Верни только JSON: "
         "{'main_problem':'','user_pains':[{'role':'','pain':'','example':'','source':''}],'business_pains':[{'type':'','description':'','impact':''}],"
         "'root_causes':[{'cause':'','category':'process|system|data|people|regulation|integration|unknown','confidence':'high|medium|low'}],"
         "'consequences_if_not_solved':[],'evidence_signals':[],'clarifying_questions':[],'problem_statement':'','assumptions':[],'missing_information':[]}. "
-        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps([q for q in (prev.get('ai_questions') or []) if isinstance(q, dict) and str(q.get('answer','')).strip()], ensure_ascii=False)}"
+        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps(answered_questions, ensure_ascii=False)}"
     )
     data = _json_from_llm_response(create_llm(db).generate(prompt))
-    if not data: raise HTTPException(400, 'LLM вернул некорректный JSON')
+    if not data:
+        main_problem = (prev.get('main_problem') or '').strip()
+        context_input = (context_art.structured_content or {}).get('context_input') or {}
+        initiative = str(context_input.get('initiative_name') or '').strip()
+        summary = str(context_input.get('short_description') or '').strip()
+        answered_lines = [
+            f"{i+1}) {q.get('text', '').strip()} — {q.get('answer', '').strip()}"
+            for i, q in enumerate(answered_questions)
+            if str(q.get('text', '')).strip() and str(q.get('answer', '')).strip()
+        ]
+        problem_lines = []
+        if main_problem:
+            problem_lines.append(f"1) {main_problem}")
+        if initiative or summary:
+            problem_lines.append(f"{len(problem_lines)+1}) Контекст инициативы «{initiative or 'без названия'}»: {summary or 'описание уточняется'}.")
+        if answered_lines:
+            problem_lines.append(f"{len(problem_lines)+1}) Уточнения от пользователя: " + " | ".join(answered_lines))
+        data = {
+            'main_problem': main_problem or f"Не автоматизирован процесс по инициативе «{initiative or 'без названия'}».",
+            'problem_statement': "\n".join(problem_lines).strip(),
+            'clarifying_questions': prev.get('clarifying_questions') or [],
+            'missing_information': [] if answered_lines else ['Требуются ответы на уточняющие вопросы'],
+            'assumptions': prev.get('assumptions') or []
+        }
     versions = prev.get('versions', [])
     versions.append({'created_at': str(time.time()), 'snapshot': {k:v for k,v in prev.items() if k!='versions'}})
     merged = {**_default_problem_structured(), **prev, **data, 'versions': versions[-20:], 'status':'needs_clarification', 'source_context_version': context_art.version}
@@ -212,6 +339,29 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     if isinstance(gen_list, list) and gen_list:
         merged['generated_problem_list'] = gen_list
         merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i,x in enumerate(gen_list)])
+    if not (merged.get('problem_statement') or '').strip():
+        strict_items: list[str] = []
+        main_problem = str(merged.get('main_problem') or '').strip()
+        if main_problem:
+            strict_items.append(main_problem)
+        for p_item in (merged.get('user_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('pain') or '').strip():
+                strict_items.append(str(p_item.get('pain')).strip())
+        for p_item in (merged.get('business_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('description') or '').strip():
+                strict_items.append(str(p_item.get('description')).strip())
+        for q in answered_questions:
+            txt = str(q.get('answer') or '').strip()
+            if txt:
+                strict_items.append(f"Подтверждено пользователем: {txt}")
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in strict_items:
+            key = item.lower()
+            if key not in seen:
+                seen.add(key)
+                dedup.append(item)
+        merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i, x in enumerate(dedup[:8])]) if dedup else ''
     art = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, merged.get('problem_statement') or merged.get('main_problem') or '', structured_content=merged)
     return {'ok':True,'structured_content':art.structured_content,'version':art.version}
 
@@ -238,6 +388,7 @@ def apply_problem_patch(project_id: str, payload: dict, db: Session = Depends(ge
 
 @router.post('/projects/{project_id}/goal/generate')
 def generate_goal(project_id: str, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p: raise HTTPException(404, 'Проект не найден')
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
@@ -287,6 +438,7 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
 
 @router.post('/projects/{project_id}/stage/{artifact_type}/questions')
 def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     if not context_art:
         raise HTTPException(400, 'Сначала заполните Контекст')
@@ -304,12 +456,16 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
         if txt and txt.lower() not in existing_texts:
             existing.append({'id': f"q_{int(time.time()*1000)}_{len(existing)}", 'text': txt, 'answer': ''})
             existing_texts.add(txt.lower())
+        if len(existing) >= 6:
+            break
+    existing = existing[:6]
     sc['ai_questions'] = existing
     saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
     return {'ok': True, 'questions': existing, 'structured_content': saved.structured_content}
 
 @router.post('/projects/{project_id}/stage/{artifact_type}/ask')
 def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
+    _ensure_llm_ready(db)
     art = repo.get_artifact(db, project_id, artifact_type)
     sc = (art.structured_content if art else {}) or {}
     msg = payload.get('message','').strip()
@@ -379,12 +535,7 @@ def export_docx(project_id: str, db: Session = Depends(get_db)):
 @router.get('/settings/llm')
 def get_llm_settings(db: Session = Depends(get_db)):
     s = db.query(LLMSettings).order_by(LLMSettings.id.desc()).first()
-    if not s:
-        return {'provider':'mock','base_url':'https://openrouter.ai/api/v1','api_key':'','model':'deepseek/deepseek-chat-v3-0324:free','timeout_seconds':120,'temperature':0.2,'is_active':True}
-    key = s.api_key or ''
-    masked = ('********' + key[-4:]) if key else ''
-    history = db.query(LLMSettings).filter(LLMSettings.last_error.isnot(None)).order_by(LLMSettings.id.desc()).limit(5).all()
-    return {'provider':s.provider,'base_url':s.base_url,'api_key':masked,'model':s.model,'timeout_seconds':s.timeout_seconds,'temperature':s.temperature,'is_active':s.is_active,'last_connection_status':s.last_connection_status,'last_latency_ms':s.last_latency_ms,'last_error':s.last_error,'last_actual_model':s.last_actual_model,'key_tail':(key[-4:] if key else 'none'),'error_history':[{'time':str(x.updated_at),'error':x.last_error} for x in history]}
+    return _serialize_llm_settings_row(s)
 
 @router.put('/settings/llm')
 def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
@@ -395,7 +546,7 @@ def put_llm_settings(payload: dict, db: Session = Depends(get_db)):
         api_key = incoming
     s = LLMSettings(provider=payload.get('provider','mock'), base_url=payload.get('base_url'), api_key=api_key, model=payload.get('model'), timeout_seconds=payload.get('timeout_seconds',60), temperature=payload.get('temperature',0.2), is_active=True, last_connection_status=(old.last_connection_status if old else None), last_latency_ms=(old.last_latency_ms if old else None), last_error=(old.last_error if old else None), last_actual_model=(old.last_actual_model if old else None))
     db.add(s); db.commit(); db.refresh(s)
-    return {'ok': True}
+    return _serialize_llm_settings_row(s)
 
 @router.post('/settings/llm/test')
 def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
@@ -413,13 +564,15 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
 
     if provider == 'mock':
         s = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='mock', last_latency_ms=0, last_error=None, last_actual_model=model)
-        db.add(s); db.commit()
-        return {'ok': True, 'provider': 'mock', 'endpoint': 'mock://local', 'model': model, 'status':'mock', 'latency_ms':0}
+        db.add(s); db.commit(); db.refresh(s)
+        return _serialize_llm_settings_row(s)
 
     has_api_key = bool(api_key and not str(api_key).startswith('********'))
     key_tail = (api_key[-4:] if has_api_key else 'none')
     if provider != 'mock' and not has_api_key:
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'config', 'response_body': 'API key is empty', 'has_api_key': False, 'key_tail': key_tail})
+        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='not_configured', last_latency_ms=0, last_error='API key отсутствует', last_actual_model=None)
+        db.add(srow); db.commit(); db.refresh(srow)
+        return _serialize_llm_settings_row(srow)
     body = {'model': model, 'messages': [{'role': 'user', 'content': 'ping'}], 'max_tokens': int(src.get('max_tokens') or 20), 'temperature': float(src.get('temperature') or (saved.temperature if saved else 0.2))}
     req = request.Request(
         url=endpoint,
@@ -439,16 +592,21 @@ def test_llm(payload: dict | None = None, db: Session = Depends(get_db)):
             actual_model = data.get('model') or model
             latency_ms = int((time.time()-started)*1000)
             srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='connected', last_latency_ms=latency_ms, last_error=None, last_actual_model=actual_model)
-            db.add(srow); db.commit()
-            return {'ok': True, 'provider': provider, 'endpoint': endpoint, 'model': model, 'actual_model': actual_model, 'status':'connected', 'latency_ms':latency_ms, 'has_api_key': has_api_key, 'key_tail': key_tail, 'message': str(data)[:160]}
+            db.add(srow); db.commit(); db.refresh(srow)
+            return _serialize_llm_settings_row(srow)
     except error.HTTPError as e:
         text = e.read().decode(errors='ignore')
-        if provider == 'openrouter' and model != 'openrouter/free':
-            return test_llm({**src, 'model': 'openrouter/free'}, db)
-        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='error', last_latency_ms=None, last_error=text[:500], last_actual_model=None)
-        db.add(srow); db.commit()
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'error', 'response_body': text[:500], 'has_api_key': has_api_key, 'key_tail': key_tail})
+        status = 'unauthorized' if e.code in (401,403) else ('model_not_found' if 'model' in text.lower() and ('not found' in text.lower() or 'does not exist' in text.lower()) else 'backend_error')
+        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status=status, last_latency_ms=None, last_error=text[:500], last_actual_model=None)
+        db.add(srow); db.commit(); db.refresh(srow)
+        return _serialize_llm_settings_row(srow)
     except Exception as e:
-        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status='error', last_latency_ms=None, last_error=str(e)[:500], last_actual_model=None)
-        db.add(srow); db.commit()
-        raise HTTPException(400, {'ok': False, 'provider': provider, 'model': model, 'endpoint': endpoint, 'status': 'error', 'response_body': str(e), 'has_api_key': has_api_key, 'key_tail': key_tail})
+        txt = str(e)
+        status = 'timeout' if ('timed out' in txt.lower() or 'timeout' in txt.lower()) else 'backend_error'
+        srow = LLMSettings(provider=provider, base_url=base_url, api_key=api_key, model=model, timeout_seconds=int(src.get('timeout_seconds') or (saved.timeout_seconds if saved else 120)), temperature=float(src.get('temperature') or (saved.temperature if saved else 0.2)), is_active=True, last_connection_status=status, last_latency_ms=None, last_error=txt[:500], last_actual_model=None)
+        db.add(srow); db.commit(); db.refresh(srow)
+        return _serialize_llm_settings_row(srow)
+
+@router.get('/runtime/status')
+def runtime_status(db: Session = Depends(get_db)):
+    return _runtime_status(db)

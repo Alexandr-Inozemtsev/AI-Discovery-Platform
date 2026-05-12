@@ -13,18 +13,18 @@ export default function RichEditor({value,onChange}:{value:string,onChange:(html
     onUpdate:({editor})=>onChange(editor.getHTML(), editor.getJSON())
   })
   if(!editor) return null
-  return <div className='card'>
+  return <div className='ui-card'>
     <div className='toolbar'>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleBold().run()}>B</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleItalic().run()}>I</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleUnderline().run()}>U</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleHeading({level:1}).run()}>H1</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleBulletList().run()}>• List</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleOrderedList().run()}>1. List</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleBlockquote().run()}>Quote</button>
-      <button className='btn' onClick={()=>editor.chain().focus().toggleCodeBlock().run()}>Code</button>
-      <button className='btn' onClick={()=>editor.chain().focus().undo().run()}>↶</button>
-      <button className='btn' onClick={()=>editor.chain().focus().redo().run()}>↷</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleBold().run()}>B</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleItalic().run()}>I</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleUnderline().run()}>U</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleHeading({level:1}).run()}>H1</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleBulletList().run()}>• List</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleOrderedList().run()}>1. List</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleBlockquote().run()}>Quote</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().toggleCodeBlock().run()}>Code</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().undo().run()}>↶</button>
+      <button className='ui-btn secondary' onClick={()=>editor.chain().focus().redo().run()}>↷</button>
     </div>
     <EditorContent editor={editor} className='editor-content'/>
   </div>
