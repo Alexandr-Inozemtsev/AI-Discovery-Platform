@@ -64,5 +64,3 @@ button, input, textarea, select { font: inherit; }
   .ui-content { padding: var(--ui-space-4); }
   .goal-grid { grid-template-columns: 1fr; }
 }
-
-.btn{display:inline-flex;align-items:center;justify-content:center}
