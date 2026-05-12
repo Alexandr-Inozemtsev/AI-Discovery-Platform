@@ -67,3 +67,5 @@ button, input, textarea, select { font: inherit; }
 
 .ai-question-card{display:flex;flex-direction:column;gap:8px}
 .problem-right .ai-sections{display:flex;flex-direction:column;gap:12px}
+.ai-answers-title{margin-bottom:8px}
+.ai-answer-row{margin-bottom:8px}
