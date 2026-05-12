@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import Card from '../ui/components/Card'
 import Button from '../ui/components/Button'
+import ButtonLink from '../ui/components/ButtonLink'
 import Input from '../ui/components/Input'
 import PageContainer from '../ui/components/PageContainer'
 import { Project } from '../types/discovery'
@@ -29,7 +30,7 @@ export default function ProjectsPage(){
         <Button onClick={()=>navigate(`/projects/${p.id}`)}>Открыть</Button>
         <Button onClick={()=>api('/projects',{method:'POST',body:JSON.stringify({project_name:`${p.project_name} (копия)`})}).then(load)}>Клонировать</Button>
         <Button onClick={()=>api(`/projects/${p.id}`,{method:'PATCH',body:JSON.stringify({status:'DRAFT'})}).then(load)}>Архивировать</Button>
-        <a className='ui-btn secondary' href={`http://localhost:8000/api/projects/${p.id}/export/docx`}>Экспорт</a>
+        <ButtonLink variant='secondary' size='sm' href={`http://localhost:8000/api/projects/${p.id}/export/docx`}>Экспорт</ButtonLink>
         <Button onClick={()=>del(p.id)}>Удалить</Button>
       </td></tr>)}
       </tbody></table>
