@@ -195,16 +195,43 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
         raise HTTPException(400, 'Сначала заполните Контекст или загрузите источники знаний.')
     problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
     prev = (problem_art.structured_content or _default_problem_structured()) if problem_art else _default_problem_structured()
+    answered_questions = [
+        q for q in (prev.get('ai_questions') or prev.get('clarifying_questions') or [])
+        if isinstance(q, dict) and str(q.get('answer', '')).strip()
+    ]
     prompt=(
         "Ты AI-ассистент бизнес-аналитика в Discovery-процессе. Отвечай строго на русском языке. "
         "На этапе 'Проблема' помоги сформулировать только проблему, без TO BE/решений/требований. Учитывай: 1) ручной текст PO в main_problem, 2) только отвеченные ai_questions, 3) контекст. Верни только JSON: "
         "{'main_problem':'','user_pains':[{'role':'','pain':'','example':'','source':''}],'business_pains':[{'type':'','description':'','impact':''}],"
         "'root_causes':[{'cause':'','category':'process|system|data|people|regulation|integration|unknown','confidence':'high|medium|low'}],"
         "'consequences_if_not_solved':[],'evidence_signals':[],'clarifying_questions':[],'problem_statement':'','assumptions':[],'missing_information':[]}. "
-        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps([q for q in (prev.get('ai_questions') or []) if isinstance(q, dict) and str(q.get('answer','')).strip()], ensure_ascii=False)}"
+        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps(answered_questions, ensure_ascii=False)}"
     )
     data = _json_from_llm_response(create_llm(db).generate(prompt))
-    if not data: raise HTTPException(400, 'LLM вернул некорректный JSON')
+    if not data:
+        main_problem = (prev.get('main_problem') or '').strip()
+        context_input = (context_art.structured_content or {}).get('context_input') or {}
+        initiative = str(context_input.get('initiative_name') or '').strip()
+        summary = str(context_input.get('short_description') or '').strip()
+        answered_lines = [
+            f"{i+1}) {q.get('text', '').strip()} — {q.get('answer', '').strip()}"
+            for i, q in enumerate(answered_questions)
+            if str(q.get('text', '')).strip() and str(q.get('answer', '')).strip()
+        ]
+        problem_lines = []
+        if main_problem:
+            problem_lines.append(f"1) {main_problem}")
+        if initiative or summary:
+            problem_lines.append(f"{len(problem_lines)+1}) Контекст инициативы «{initiative or 'без названия'}»: {summary or 'описание уточняется'}.")
+        if answered_lines:
+            problem_lines.append(f"{len(problem_lines)+1}) Уточнения от пользователя: " + " | ".join(answered_lines))
+        data = {
+            'main_problem': main_problem or f"Не автоматизирован процесс по инициативе «{initiative or 'без названия'}».",
+            'problem_statement': "\n".join(problem_lines).strip(),
+            'clarifying_questions': prev.get('clarifying_questions') or [],
+            'missing_information': [] if answered_lines else ['Требуются ответы на уточняющие вопросы'],
+            'assumptions': prev.get('assumptions') or []
+        }
     versions = prev.get('versions', [])
     versions.append({'created_at': str(time.time()), 'snapshot': {k:v for k,v in prev.items() if k!='versions'}})
     merged = {**_default_problem_structured(), **prev, **data, 'versions': versions[-20:], 'status':'needs_clarification', 'source_context_version': context_art.version}
@@ -212,6 +239,29 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     if isinstance(gen_list, list) and gen_list:
         merged['generated_problem_list'] = gen_list
         merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i,x in enumerate(gen_list)])
+    if not (merged.get('problem_statement') or '').strip():
+        strict_items: list[str] = []
+        main_problem = str(merged.get('main_problem') or '').strip()
+        if main_problem:
+            strict_items.append(main_problem)
+        for p_item in (merged.get('user_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('pain') or '').strip():
+                strict_items.append(str(p_item.get('pain')).strip())
+        for p_item in (merged.get('business_pains') or []):
+            if isinstance(p_item, dict) and str(p_item.get('description') or '').strip():
+                strict_items.append(str(p_item.get('description')).strip())
+        for q in answered_questions:
+            txt = str(q.get('answer') or '').strip()
+            if txt:
+                strict_items.append(f"Подтверждено пользователем: {txt}")
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in strict_items:
+            key = item.lower()
+            if key not in seen:
+                seen.add(key)
+                dedup.append(item)
+        merged['problem_statement'] = '\n'.join([f"{i+1}) {x}" for i, x in enumerate(dedup[:8])]) if dedup else ''
     art = repo.upsert_artifact(db, project_id, ArtifactType.PROBLEM, merged.get('problem_statement') or merged.get('main_problem') or '', structured_content=merged)
     return {'ok':True,'structured_content':art.structured_content,'version':art.version}
 
@@ -304,6 +354,9 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
         if txt and txt.lower() not in existing_texts:
             existing.append({'id': f"q_{int(time.time()*1000)}_{len(existing)}", 'text': txt, 'answer': ''})
             existing_texts.add(txt.lower())
+        if len(existing) >= 6:
+            break
+    existing = existing[:6]
     sc['ai_questions'] = existing
     saved = repo.upsert_artifact(db, project_id, artifact_type, (art.content if art else ''), structured_content=sc, rich_content_json=(art.rich_content_json if art else None), rendered_html=(art.rendered_html if art else None))
     return {'ok': True, 'questions': existing, 'structured_content': saved.structured_content}
