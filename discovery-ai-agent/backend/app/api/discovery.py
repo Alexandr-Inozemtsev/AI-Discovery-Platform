@@ -216,14 +216,14 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     if not extracted:
         raise HTTPException(400, 'LLM вернул некорректный JSON')
     history = (existing.structured_content or {}).get('knowledge_history', []) if existing else []
-    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links, 'source_trace': analysis.get('source_trace', {})}
+    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links, 'source_trace': analysis.get('source_trace', [])}
     history.append(snapshot)
     structured = {
         'context_input': context_input,
         'documents': documents,
         'links': links,
         'extracted_knowledge': extracted,
-        'source_trace': analysis.get('source_trace') or {},
+        'source_trace': analysis.get('source_trace') or [],
         'overview_for_ai': analysis.get('overview_for_ai') or {},
         'knowledge_history': history[-30:],
         'indexing_status': 'completed'
