@@ -181,7 +181,7 @@ export default function ProjectPage(){
       const nextDraft = { ...problemDraft, ai_questions: questionsWithAnswers, clarifying_questions: questionsWithAnswers }
       await api<any>(`/projects/${projectId}/artifacts/PROBLEM`,{method:'PUT',body:JSON.stringify({content:nextDraft.problem_statement||nextDraft.main_problem||'',structured_content:nextDraft})})
       await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/problem/generate`,{method:'POST'})
-      setProblemDraft(prev=>{
+      setProblemDraft((prev:any)=>{
         const incoming = r?.structured_content || {}
         return {
           ...prev,
@@ -196,7 +196,7 @@ export default function ProjectPage(){
           ai_questions: Array.isArray(incoming.ai_questions) && incoming.ai_questions.length ? incoming.ai_questions : (prev.ai_questions || nextDraft.ai_questions || [])
         }
       })
-      setProblemDraft(prev=>({...prev, problem_statement: normalizeProblemStatement(prev.problem_statement||'')}))
+      setProblemDraft((prev:any)=>({...prev, problem_statement: normalizeProblemStatement(prev.problem_statement||'')}))
       setMsg('Черновик проблемы сгенерирован на основе контекста и ответов')
     }catch{
       setMsg('Ошибка генерации проблемы')
