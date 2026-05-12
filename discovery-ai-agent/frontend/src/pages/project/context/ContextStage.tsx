@@ -12,11 +12,11 @@ export default function ContextStage(props:any){
     {key:'business_process_owner',label:'Бизнес-владелец процесса',value:props.contextInput.business_process_owner || props.contextInput.process_owner,placeholder:'Укажите подразделение или роль от бизнеса, отвечающую за процесс',helper:'Например: Дирекция розничного бизнеса / владелец процесса ИБС.'},
     {key:'discovery_responsible',label:'Ответственный за Discovery',value:props.contextInput.discovery_responsible || props.contextInput.discovery_owner,placeholder:'Укажите, кто ведёт discovery и подготовку БТ',helper:'Например: Product Owner, бизнес-аналитик или ответственный сотрудник.'}
   ]
-  return <div className='context-page'><div className='context-layout'>
+  return <div className='context-page'><div className='ui-card page-section-gap'><b>{props.contextStatus}</b></div><div className='context-layout'>
     <ProjectOverviewCard fields={fields} onChange={props.onUpdateContextField}/>
     <KnowledgeSourcesCard {...props}/>
-    <ExtractedKnowledgeCard knowledge={props.knowledge} onRefresh={props.runContextAnalyze}/>
-    <KnowledgeCoverageCard />
-    <AIAssistantCard />
+    <ExtractedKnowledgeCard knowledge={props.knowledge}/>
+    <KnowledgeCoverageCard coverage={props.knowledge?.coverage || props.knowledge?.покрытие || {}} />
+    <AIAssistantCard onGoProblem={props.onGoProblem}/>
   </div></div>
 }
