@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import './ui/tokens.css';
+@import './ui/button.css';
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; }
@@ -27,13 +28,6 @@ button, input, textarea, select { font: inherit; }
 .nav-item:hover, .nav-item.active { background: rgba(59,130,246,.2); }
 
 .ui-card, .card { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow-card); padding: var(--ui-space-4); }
-.ui-btn, .btn { height: 36px; border: 1px solid transparent; border-radius: var(--ui-radius-md); padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; font-weight: 600; }
-.ui-btn.primary, .btn.primary { background: var(--ui-primary); color: #fff; }
-.ui-btn.secondary, .btn.secondary, .btn { background: #fff; color: var(--ui-text); border-color: var(--ui-border); }
-.ui-btn.soft { background: var(--ui-primary-soft); color: var(--ui-primary); }
-.ui-btn.ghost { background: transparent; color: var(--ui-text-muted); }
-.ui-btn.danger { background: var(--ui-danger); color: #fff; }
-.ui-btn:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .ui-input, .ui-textarea, .input, .textarea, select {
   width: 100%; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: #fff; color: var(--ui-text); padding: 10px 12px;
@@ -70,3 +64,5 @@ button, input, textarea, select { font: inherit; }
   .ui-content { padding: var(--ui-space-4); }
   .goal-grid { grid-template-columns: 1fr; }
 }
+
+.btn{display:inline-flex;align-items:center;justify-content:center}
