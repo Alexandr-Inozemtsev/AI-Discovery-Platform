@@ -287,7 +287,7 @@ export default function ProjectPage(){
   return <div className='workspace-single'>
     <section>
       <div className='ui-card page-section-gap'>
-        <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><div className='progress'><div style={{width:`${cmp?.completion_percent ?? 0}%`}}/></div></div></div>
+        <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><progress className='progress-native' value={cmp?.completion_percent ?? 0} max={100} /></div></div>
         <div className='ui-stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <Button key={t.type} size='sm' variant='ghost' className={`ui-stage-tab ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></Button>})}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
       </div>
 

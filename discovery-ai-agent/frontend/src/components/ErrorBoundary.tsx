@@ -18,7 +18,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className='ui-card'>
-          <h3 style={{ marginTop: 0 }}>{this.props.fallbackTitle || 'Ошибка интерфейса'}</h3>
+          <h3 className='ui-card__title'>{this.props.fallbackTitle || 'Ошибка интерфейса'}</h3>
           <p className='sub'>Произошла ошибка рендеринга. Обновите страницу или откройте другой этап.</p>
         </div>
       )
