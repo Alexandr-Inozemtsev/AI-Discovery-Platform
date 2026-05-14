@@ -4,3 +4,26 @@ export type ArtifactType = 'CONTEXT' | 'PROBLEM' | 'GOAL' | 'BUSINESS_EFFECT' | 
 
 export interface Project { id: string; project_name: string; business_domain?: string; status: ProjectStatus; current_stage: ProjectStage; jira_epic_url?: string }
 export interface Artifact { id: string; project_id: string; artifact_type: ArtifactType; content: string; structured_content?: Record<string, unknown>; version: number }
+
+export type ContextReadinessStatus = 'ready' | 'warning' | 'blocked'
+export interface ContextCoverage {
+  manual_context: boolean
+  documents: boolean
+  systems: boolean
+  processes: boolean
+  roles: boolean
+  integrations: boolean
+  bpmn: boolean
+  kpi: boolean
+  sla: boolean
+  constraints: boolean
+}
+export interface ContextReadiness {
+  status: ContextReadinessStatus
+  score: number
+  can_go_to_problem: boolean
+  summary: string
+  blocking_reasons: string[]
+  warnings: string[]
+  next_actions: string[]
+}

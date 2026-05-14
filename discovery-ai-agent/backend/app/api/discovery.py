@@ -156,6 +156,10 @@ def _ensure_llm_ready(db: Session):
 def _context_source_status(extraction_status: str) -> str:
     if extraction_status == 'completed':
         return 'ready'
+    if extraction_status == 'empty':
+        return 'empty'
+    if extraction_status == 'unsupported':
+        return 'unsupported'
     if extraction_status in {'failed', 'unsupported'}:
         return 'error'
     return 'uploaded'
@@ -247,10 +251,30 @@ async def upload_context_sources(project_id: str, files: list[UploadFile] = File
             'chunksCount': 0,
         }
         if len(content) > MAX_CONTEXT_FILE_SIZE:
-            sources.append({**base, 'status': 'error', 'text_extraction_status': 'failed', 'errorMessage': 'Файл слишком большой. Максимальный размер: 15 МБ.', 'text_extraction_error': 'Файл слишком большой. Максимальный размер: 15 МБ.'})
+            sources.append({
+                **base,
+                'status': 'error',
+                'text_extraction_status': 'failed',
+                'text_extraction_error': 'Файл слишком большой. Максимальный размер: 15 МБ.',
+                'text_extracted_at': None,
+                'extracted_text': '',
+                'chunks': [],
+                'chunksCount': 0,
+                'errorMessage': 'Файл слишком большой. Максимальный размер: 15 МБ.'
+            })
             continue
         if ext not in SUPPORTED_CONTEXT_EXTENSIONS:
-            sources.append({**base, 'status': 'error', 'text_extraction_status': 'unsupported', 'errorMessage': f'Неподдерживаемый формат файла: {ext or "unknown"}', 'text_extraction_error': f'Неподдерживаемый формат файла: {ext or "unknown"}'})
+            sources.append({
+                **base,
+                'status': 'unsupported',
+                'text_extraction_status': 'unsupported',
+                'text_extraction_error': f'Неподдерживаемый формат файла: {ext or "unknown"}',
+                'text_extracted_at': None,
+                'extracted_text': '',
+                'chunks': [],
+                'chunksCount': 0,
+                'errorMessage': f'Неподдерживаемый формат файла: {ext or "unknown"}'
+            })
             continue
         extracted = extract_text_from_upload(upload.filename or '', content, upload.content_type)
         chunks = [
@@ -269,6 +293,19 @@ async def upload_context_sources(project_id: str, files: list[UploadFile] = File
             'chunks': chunks,
             'chunksCount': len(chunks),
         })
+    existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
+    previous = existing.structured_content if existing and isinstance(existing.structured_content, dict) else {}
+    merged_files = [*(previous.get('uploaded_files') or previous.get('documents') or []), *sources]
+    structured = {
+        **previous,
+        'context_input': previous.get('context_input') or {},
+        'documents': merged_files,
+        'uploaded_files': merged_files,
+        'links': previous.get('links') or [],
+        'indexing_status': 'requires_update',
+        'uploaded_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    }
+    repo.upsert_artifact(db, project_id, ArtifactType.CONTEXT, existing.content if existing else '', structured_content=structured)
     return {'ok': True, 'sources': sources}
 
 
@@ -307,8 +344,22 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     extracted = analysis.get('extracted_knowledge') or {}
     if not extracted:
         raise HTTPException(400, 'LLM вернул некорректный JSON')
+    source_trace = analysis.get('source_trace') or extracted.get('source_trace') or []
+    coverage = analysis.get('coverage') or extracted.get('coverage') or {}
+    readiness = analysis.get('readiness') or extracted.get('readiness') or {}
+    problem_handoff = analysis.get('problem_handoff') or extracted.get('problem_handoff') or {}
     history = (existing.structured_content or {}).get('knowledge_history', []) if existing else []
-    snapshot = {'created_at': str(time.time()), 'extracted_knowledge': extracted, 'documents': documents, 'links': links, 'source_trace': analysis.get('source_trace', [])}
+    indexed_at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    snapshot = {
+        'created_at': indexed_at,
+        'extracted_knowledge': extracted,
+        'documents': documents,
+        'links': links,
+        'source_trace': source_trace,
+        'coverage': coverage,
+        'readiness': readiness,
+        'problem_handoff': problem_handoff,
+    }
     history.append(snapshot)
     structured = {
         'context_input': context_input,
@@ -316,15 +367,27 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
         'uploaded_files': documents,
         'links': links,
         'extracted_knowledge': extracted,
-        'source_trace': analysis.get('source_trace') or [],
+        'source_trace': source_trace,
+        'coverage': coverage,
+        'readiness': readiness,
         'overview_for_ai': analysis.get('overview_for_ai') or {},
-        'problem_handoff': analysis.get('problem_handoff') or extracted.get('problem_handoff') or {},
+        'problem_handoff': problem_handoff,
         'knowledge_history': history[-30:],
-        'indexing_status': 'completed'
+        'indexing_status': 'completed',
+        'indexed_at': indexed_at,
     }
     content = existing.content if existing else ''
     repo.upsert_artifact(db, project_id, ArtifactType.CONTEXT, content, structured_content=structured)
-    return {'ok': True, 'extracted_knowledge': extracted, 'history_count': len(history), 'indexing_status': 'completed'}
+    return {
+        'ok': True,
+        'extracted_knowledge': extracted,
+        'source_trace': source_trace,
+        'coverage': coverage,
+        'readiness': readiness,
+        'problem_handoff': problem_handoff,
+        'history_count': len(history),
+        'indexing_status': 'completed',
+    }
 
 @router.post('/projects/{project_id}/generate/{artifact_type}', response_model=ArtifactRead)
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
@@ -387,7 +450,8 @@ def _default_problem_structured():
     return {
         'main_problem':'','user_pains':[],'business_pains':[],'root_causes':[],'consequences_if_not_solved':[],'evidence_signals':[],
         'problem_statement':'','assumptions':[],'missing_information':[],'clarifying_questions':[],'ai_chat_history':[],
-        'versions':[],'status':'draft','source_context_version':0
+        'versions':[],'status':'draft','source_context_version':0,'source_context_indexed_at':None,
+        'problem_handoff':{},'source_trace':[],'context_readiness':{}
     }
 
 
@@ -399,6 +463,10 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     if not context_art or not (context_art.structured_content or {}).get('context_input'):
         raise HTTPException(400, 'Сначала заполните Контекст или загрузите источники знаний.')
+    context_struct = context_art.structured_content or {}
+    problem_handoff = context_struct.get('problem_handoff') or {}
+    source_trace = context_struct.get('source_trace') or []
+    context_readiness = context_struct.get('readiness') or {}
     problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
     prev = (problem_art.structured_content or _default_problem_structured()) if problem_art else _default_problem_structured()
     answered_questions = [
@@ -411,12 +479,15 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
         "{'main_problem':'','user_pains':[{'role':'','pain':'','example':'','source':''}],'business_pains':[{'type':'','description':'','impact':''}],"
         "'root_causes':[{'cause':'','category':'process|system|data|people|regulation|integration|unknown','confidence':'high|medium|low'}],"
         "'consequences_if_not_solved':[],'evidence_signals':[],'clarifying_questions':[],'problem_statement':'','assumptions':[],'missing_information':[]}. "
-        f"Контекст: {json.dumps(context_art.structured_content, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps(answered_questions, ensure_ascii=False)}"
+        f"Context problem_handoff: {json.dumps(problem_handoff, ensure_ascii=False)}. "
+        f"Context source_trace: {json.dumps(source_trace, ensure_ascii=False)}. "
+        f"Context readiness: {json.dumps(context_readiness, ensure_ascii=False)}. "
+        f"Контекст: {json.dumps(context_struct, ensure_ascii=False)}. Текущий драфт проблемы: {json.dumps(prev, ensure_ascii=False)}. Ответы на вопросы: {json.dumps(answered_questions, ensure_ascii=False)}"
     )
     data = _json_from_llm_response(create_llm(db).generate(prompt))
     if not data:
         main_problem = (prev.get('main_problem') or '').strip()
-        context_input = (context_art.structured_content or {}).get('context_input') or {}
+        context_input = context_struct.get('context_input') or {}
         initiative = str(p.project_name or '').strip()
         summary = str(context_input.get('short_description') or '').strip()
         answered_lines = [
@@ -440,7 +511,18 @@ def generate_problem(project_id: str, payload: dict | None = None, db: Session =
         }
     versions = prev.get('versions', [])
     versions.append({'created_at': str(time.time()), 'snapshot': {k:v for k,v in prev.items() if k!='versions'}})
-    merged = {**_default_problem_structured(), **prev, **data, 'versions': versions[-20:], 'status':'needs_clarification', 'source_context_version': context_art.version}
+    merged = {
+        **_default_problem_structured(),
+        **prev,
+        **data,
+        'versions': versions[-20:],
+        'status':'needs_clarification',
+        'source_context_version': context_art.version,
+        'source_context_indexed_at': context_struct.get('indexed_at'),
+        'problem_handoff': problem_handoff,
+        'source_trace': source_trace,
+        'context_readiness': context_readiness,
+    }
     gen_list = data.get('generated_problem_list') or []
     if isinstance(gen_list, list) and gen_list:
         merged['generated_problem_list'] = gen_list

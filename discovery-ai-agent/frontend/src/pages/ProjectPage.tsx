@@ -124,7 +124,7 @@ export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
   const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [aiActionStatus,setAiActionStatus]=useState<Record<string,'idle'|'success'|'error'>>({}); const [goalDraft,setGoalDraft]=useState<any>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
-  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [goalQuestion,setGoalQuestion]=useState(''); const [goalPatch,setGoalPatch]=useState<any>(null); const [stageQuestion,setStageQuestion]=useState(''); const [stagePatch,setStagePatch]=useState<any>(null); const [questionAnswers,setQuestionAnswers]=useState<Record<string,string>>({}); const [questionGenLoading,setQuestionGenLoading]=useState(false); const [answerLoadingId,setAnswerLoadingId]=useState<string|null>(null); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<string[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
+  const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [goalQuestion,setGoalQuestion]=useState(''); const [goalPatch,setGoalPatch]=useState<any>(null); const [stageQuestion,setStageQuestion]=useState(''); const [stagePatch,setStagePatch]=useState<any>(null); const [questionAnswers,setQuestionAnswers]=useState<Record<string,string>>({}); const [questionGenLoading,setQuestionGenLoading]=useState(false); const [answerLoadingId,setAnswerLoadingId]=useState<string|null>(null); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<any[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [contextArtifactVersion,setContextArtifactVersion]=useState<number|null>(null); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0,problem_handoff:{},source_trace:[],context_readiness:{}}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
   const ensureRuntimeReady = async () => {
     try {
@@ -142,7 +142,67 @@ export default function ProjectPage(){
   const load=async()=>{try{setProject(await api<Project>(`/projects/${projectId}`)); await loadCompletion()}catch{setMsg('Проект не найден')}}
   const loadStageQuestions=async()=>{try{await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/stage/${active}/questions`,{method:'POST'}); if(active==='PROBLEM') setProblemDraft((p:any)=>({...p, clarifying_questions:r.questions||[]})); else setStructured((st:any)=>({...st, ai_questions:r.questions||[]})); const mapped:Record<string,string>={}; (Array.isArray(r.questions)?r.questions:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...prev,...mapped})); return r}catch(e:any){throw new Error(e?.message||'Не удалось сгенерировать вопросы')}}
   const regenerateStageQuestions=async()=>{try{setQuestionGenLoading(true); await loadStageQuestions(); setMsg('Дополнительные вопросы сгенерированы')}catch(e:any){setMsg(e?.message||'Ошибка генерации вопросов')}finally{setQuestionGenLoading(false)}}
-  const loadArtifact=async(type:ArtifactType)=>{try{const a=await api<any>(`/projects/${projectId}/artifacts/${type}`);setContent(a.rendered_html||a.content||'');setRichJson(a.rich_content_json||null);setStructured(a.structured_content||{});setVer(a.version);setUpdated(a.updated_at); if(type==='CONTEXT'){const sc=a.structured_content||{}; const ci={...emptyInput,...(sc?.context_input||{})}; setContextInput({...ci,product_goal:ci.product_goal||ci.initiative_goal||'',business_process_owner:ci.business_process_owner||ci.process_owner||'',discovery_responsible:ci.discovery_responsible||ci.discovery_owner||''}); setDocuments(sc?.uploaded_files||sc?.documents||[]); setLinks(sc?.links||[]); setKnowledge(sc?.extracted_knowledge||null); setContextReady(true)} if(type==='PROBLEM'){const sc=a.structured_content||{}; const qs=(sc.ai_questions || sc.clarifying_questions || []); setProblemDraft((prev:any)=>({...prev,...sc, clarifying_questions: Array.isArray(qs)&&qs.length?qs:(prev.clarifying_questions||[]), ai_answers:Array.isArray(sc.ai_answers)&&sc.ai_answers.length?sc.ai_answers:(prev.ai_answers||[])})); const mapped:Record<string,string>={}; (Array.isArray(qs)?qs:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...mapped,...prev}))} if(type==='GOAL'){setGoalDraft((a.structured_content||{}).aiDrafts||null)}}catch{setContent('');setRichJson(null);setStructured({});setVer(null);setUpdated(''); if(type==='CONTEXT'){setContextInput(emptyInput); setDocuments([]); setLinks([]); setKnowledge(null); setContextReady(true); try{await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:{context_input:emptyInput,links:[],uploaded_files:[],extracted_knowledge:null,knowledge_coverage:{},indexing_status:'idle'}})})}catch{}}}}
+  const applyContextSnapshot=(artifact:any)=>{
+    const sc=artifact?.structured_content||{}
+    const ci={...emptyInput,...(sc?.context_input||{})}
+    setContextInput({...ci,product_goal:ci.product_goal||ci.initiative_goal||'',business_process_owner:ci.business_process_owner||ci.process_owner||'',discovery_responsible:ci.discovery_responsible||ci.discovery_owner||''})
+    setDocuments(sc?.uploaded_files||sc?.documents||[])
+    setLinks(sc?.links||[])
+    setKnowledge(sc?.extracted_knowledge||null)
+    setContextArtifactVersion(artifact?.version??null)
+  }
+  const loadLatestContextSnapshot=async()=>{
+    const ctx=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`).catch(()=>null)
+    if(ctx) applyContextSnapshot(ctx)
+    return ctx
+  }
+  const loadArtifact=async(type:ArtifactType)=>{
+    try{
+      const a=await api<any>(`/projects/${projectId}/artifacts/${type}`)
+      setContent(a.rendered_html||a.content||'')
+      setRichJson(a.rich_content_json||null)
+      setStructured(a.structured_content||{})
+      setVer(a.version)
+      setUpdated(a.updated_at)
+      if(type==='CONTEXT'){
+        applyContextSnapshot(a)
+        setContextReady(true)
+      }
+      if(type==='PROBLEM'){
+        await loadLatestContextSnapshot()
+        const sc=a.structured_content||{}
+        const qs=(sc.ai_questions || sc.clarifying_questions || [])
+        setProblemDraft((prev:any)=>({...prev,...sc, clarifying_questions: Array.isArray(qs)&&qs.length?qs:(prev.clarifying_questions||[]), ai_answers:Array.isArray(sc.ai_answers)&&sc.ai_answers.length?sc.ai_answers:(prev.ai_answers||[])}))
+        const mapped:Record<string,string>={}
+        ;(Array.isArray(qs)?qs:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')})
+        setQuestionAnswers(prev=>({...mapped,...prev}))
+      }
+      if(type==='GOAL'){
+        setGoalDraft((a.structured_content||{}).aiDrafts||null)
+      }
+    }catch{
+      setContent('')
+      setRichJson(null)
+      setStructured({})
+      setVer(null)
+      setUpdated('')
+      if(type==='CONTEXT'){
+        setContextInput(emptyInput)
+        setDocuments([])
+        setLinks([])
+        setKnowledge(null)
+        setContextArtifactVersion(null)
+        setContextReady(true)
+        try{
+          const created=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:{context_input:emptyInput,links:[],uploaded_files:[],extracted_knowledge:null,coverage:{},readiness:null,source_trace:[],problem_handoff:{},knowledge_coverage:{},indexing_status:'idle'}})})
+          setContextArtifactVersion(created.version)
+        }catch{}
+      }
+      if(type==='PROBLEM'){
+        await loadLatestContextSnapshot()
+      }
+    }
+  }
   useEffect(()=>{load(); if(projectId) localStorage.setItem('lastOpenedProjectId', projectId)},[projectId]);
   useEffect(()=>{const st = searchParams.get('stage') as ArtifactType | null; if(st && tabs.some(t=>t.type===st)) setActive(st)},[searchParams]);
   useEffect(()=>{loadArtifact(active); loadStageQuestions(); if(projectId) navigate(`/projects/${projectId}?stage=${active}`, { replace:true })},[active,projectId])
@@ -193,14 +253,16 @@ export default function ProjectPage(){
     extracted_knowledge: nextKnowledge,
     problem_handoff: nextStructured?.problem_handoff || nextKnowledge?.problem_handoff || {},
     source_trace: nextStructured?.source_trace || nextKnowledge?.source_trace || [],
-    knowledge_coverage: nextKnowledge?.coverage || nextKnowledge?.покрытие || {},
+    coverage: nextStructured?.coverage || nextKnowledge?.coverage || nextKnowledge?.покрытие || {},
+    readiness: nextStructured?.readiness || nextKnowledge?.readiness || null,
+    knowledge_coverage: nextStructured?.coverage || nextKnowledge?.coverage || nextKnowledge?.покрытие || {},
     indexing_status: nextStructured?.indexing_status || 'idle',
     indexed_at: nextStructured?.indexed_at || null,
     knowledge_history: nextStructured?.knowledge_history||[]
   })}
 
-  const saveContextInput=async(overrides:any={})=>{try{if(!projectId) return; setSaving('saving'); const a=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:buildContextPayload(overrides)})}); setVer(a.version); setUpdated(a.updated_at); setStructured(a.structured_content||{}); setSaving('saved'); return a}catch{setSaving('error'); setMsg('Ошибка сохранения контекста')}}
-  const runContextAnalyze=async()=>{try{setThinking(true); await ensureRuntimeReady(); const indexingDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,status:'indexing',updatedAt:new Date().toISOString()})); setDocuments(indexingDocs); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents:indexingDocs,links})}); const now=new Date().toISOString(); const extracted=r.extracted_knowledge; const trace=Array.isArray(r.source_trace)?r.source_trace:(Array.isArray(extracted?.source_trace)?extracted.source_trace:[]); const nextDocs=indexingDocs.map((d:any)=>{const tr=trace.find((x:any)=>x.source_type==='document'&&String(x.source_id)===String(d.id)); return {...d,status:tr?.used?'ready':(d.errorMessage?'error':'uploaded'),ai_status:tr?.used?'проиндексирован':'требует текста',updatedAt:now}}); const nextStructured={...structured,indexing_status:r.indexing_status||'completed',indexed_at:now,source_trace:trace,problem_handoff:r.problem_handoff||extracted?.problem_handoff||{}}; setDocuments(nextDocs); setKnowledge(extracted); setStructured(nextStructured); setMsg('Индексация знаний завершена'); await saveContextInput({documents:nextDocs,knowledge:extracted,structured:nextStructured})}catch(e:any){const errored=(Array.isArray(documents)?documents:[]).map((d:any)=>d.status==='indexing'?{...d,status:'error',errorMessage:e?.message||'Ошибка индексации'}:d); setDocuments(errored); setMsg(e?.message||'Ошибка индексации')}finally{setThinking(false)}}
+  const saveContextInput=async(overrides:any={})=>{try{if(!projectId) return; setSaving('saving'); const a=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:buildContextPayload(overrides)})}); setVer(a.version); setUpdated(a.updated_at); setStructured(a.structured_content||{}); setContextArtifactVersion(a.version); setSaving('saved'); return a}catch{setSaving('error'); setMsg('Ошибка сохранения контекста')}}
+  const runContextAnalyze=async()=>{try{setThinking(true); await ensureRuntimeReady(); const indexingDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,status:'indexing',updatedAt:new Date().toISOString()})); setDocuments(indexingDocs); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents:indexingDocs,links})}); const now=new Date().toISOString(); const extracted=r.extracted_knowledge; const trace=Array.isArray(r.source_trace)?r.source_trace:(Array.isArray(extracted?.source_trace)?extracted.source_trace:[]); const coverage=r.coverage||extracted?.coverage||{}; const readiness=r.readiness||extracted?.readiness||null; const handoff=r.problem_handoff||extracted?.problem_handoff||{}; const nextDocs=indexingDocs.map((d:any)=>{const tr=trace.find((x:any)=>x.source_type==='document'&&String(x.source_id)===String(d.id)); const extractionStatus=d.text_extraction_status; const failedStatus=['failed','unsupported','empty'].includes(extractionStatus)?(extractionStatus==='unsupported'?'unsupported':extractionStatus==='empty'?'empty':'error'):'uploaded'; return {...d,status:tr?.used?'ready':failedStatus,ai_status:tr?.used?'проиндексирован':'требует текста',updatedAt:now}}); const nextHistory=[...(structured?.knowledge_history||[]),{created_at:now,extracted_knowledge:extracted,documents:nextDocs,links,source_trace:trace,coverage,readiness,problem_handoff:handoff}].slice(-30); const nextStructured={...structured,indexing_status:r.indexing_status||'completed',indexed_at:now,source_trace:trace,coverage,readiness,problem_handoff:handoff,knowledge_history:nextHistory}; setDocuments(nextDocs); setKnowledge(extracted); setStructured(nextStructured); setMsg('Индексация знаний завершена'); await saveContextInput({documents:nextDocs,knowledge:extracted,structured:nextStructured})}catch(e:any){const errored=(Array.isArray(documents)?documents:[]).map((d:any)=>d.status==='indexing'?{...d,status:'error',errorMessage:e?.message||'Ошибка индексации'}:d); setDocuments(errored); setMsg(e?.message||'Ошибка индексации')}finally{setThinking(false)}}
 
   const uploadContextFiles=async(e:any)=>{
     const files=Array.from(e.target.files||[]) as globalThis.File[]
@@ -332,6 +394,10 @@ export default function ProjectPage(){
 
   const applyStagePatch=async()=>{if(!stagePatch) return; try{setThinking(true); const r=await api<any>(`/projects/${projectId}/stage/${active}/apply-patch`,{method:'POST',body:JSON.stringify({patch:stagePatch})}); setStructured(r.structured_content||structured); setStagePatch(null); setMsg('AI patch применен')}catch(e:any){setMsg(e?.message||'Ошибка применения patch')}finally{setThinking(false)}}
   const sourceTrace=((structured?.source_trace || knowledge?.source_trace || []) as any[])
+  const contextCoverage=structured?.coverage || knowledge?.coverage || knowledge?.покрытие || {}
+  const contextReadiness=structured?.readiness || knowledge?.readiness || null
+  const contextMissing=((knowledge?.missing_information || structured?.extracted_knowledge?.missing_information || []) as any[]).map(safeText).filter(Boolean)
+  const problemHandoff=structured?.problem_handoff || knowledge?.problem_handoff || {}
   const manualFilled=Boolean((contextInput.short_description||contextInput.product_goal||contextInput.business_domain||contextInput.business_process_owner||contextInput.discovery_responsible||'').trim())
   const textSources=sourceTrace.filter((s:any)=>s.content_level && s.content_level!=='metadata_only').length
   const metadataOnly=sourceTrace.filter((s:any)=>s.content_level==='metadata_only').length
@@ -347,6 +413,13 @@ export default function ProjectPage(){
     if(textSources>0) return `Контекст: обработан · знания извлечены · ${textSources} источников с текстом · обновлено ${updated?new Date(updated).toLocaleString('ru-RU'):'—'}`
     return `Контекст: загружен · ${documents.length} документов · ${links.length} ссылок`
   })()
+  const updateContextField=(key:string,value:string)=>{setContextInput((prev:any)=>({...prev,[key]:value})); setStructured((prev:any)=>({...prev,indexing_status:'requires_update'}))}
+  const goProblemFromContext=()=>{
+    const status=contextReadiness?.status
+    if(status==='warning'&&!window.confirm('Готовность контекста средняя. Можно перейти к Problem, но анализ может потребовать уточнений. Перейти?')) return
+    if(status==='blocked'&&!window.confirm('Контекст низкого качества: не хватает подтверждённых данных. Перейти к Problem всё равно?')) return
+    setActive('PROBLEM')
+  }
 
   if(!project) return <div className='ui-card'>Проект не найден</div>
   return <div className='workspace-single'>
@@ -362,8 +435,8 @@ export default function ProjectPage(){
           <div className='ui-actions'><span className='sub'>Версия: {ver??0}</span><span className='sub'>Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</span>{active!=='CONTEXT' && <Button variant='primary' size='sm' onClick={save}>Сохранить</Button>}{active!=='CONTEXT' && <Button variant='secondary' size='sm' onClick={gen} disabled={busy}>Сгенерировать</Button>}{active!=='CONTEXT' && <Button variant='secondary' size='sm' onClick={validate} disabled={busy}>Проверить</Button>}{active==='FINAL_BT' && <ButtonLink variant='icon' size='sm' href={`http://localhost:8000/api/projects/${projectId}/export/docx`}><Download size={16}/></ButtonLink>}{active!=='CONTEXT' && <Button variant='icon' size='sm' aria-label='Дополнительные действия'><MoreHorizontal size={16}/></Button>}</div>
         </div>
 
-        <ErrorBoundary fallbackTitle='Ошибка рендера этапа'>{active==='CONTEXT' ? <ContextStage contextStatus={contextStatusLabel} onGoProblem={()=>setActive('PROBLEM')} sourceTrace={sourceTrace} contextInput={contextInput} onUpdateContextField={(key:string,value:string)=>setContextInput((prev:any)=>({...prev,[key]:value}))} documents={Array.isArray(documents)?documents:[]} links={(Array.isArray(links))?links:[]} knowledge={knowledge} runContextAnalyze={runContextAnalyze} onUpload={uploadContextFiles} onDeleteDocument={removeDocument} onDeleteLink={removeLink} linkDraft={linkDraft} setLinkDraft={setLinkDraft} onAddLink={addLink} />: active==='PROBLEM' ? <div className='problem-workspace'>
-          <div className='problem-left ui-card'><h4>Контекст для анализа</h4><div className='sub'>{contextInput.initiative_name}</div><div className='sub'>{contextInput.short_description}</div><div className='sub'>Процессы: {safeText((knowledge?.процессы||knowledge?.processes||[]).slice(0,5))}</div><div className='sub'>Системы: {safeText((knowledge?.системы||knowledge?.systems||[]).slice(0,5))}</div><div className='sub'>Роли: {safeText((knowledge?.роли||knowledge?.roles||[]).slice(0,5))}</div><Button variant='secondary' onClick={()=>loadArtifact('CONTEXT')}>Обновить из контекста</Button>{problemDraft.source_context_version && ver && problemDraft.source_context_version<ver ? <div className='ui-card'><p className='sub'>Контекст изменился. Рекомендуется обновить анализ проблемы.</p><Button variant='secondary' onClick={generateProblem}>Обновить проблему по новому контексту</Button></div>:null}<div className='ui-card problem-answers-sticky'><h4 className='ai-answers-title'>Ответы пользователя</h4>{(problemDraft.ai_answers||[]).map((a:any,i:number)=><div key={`hist_${i}`} className='ai-answer-row'><div><b>В:</b> {safeText(a.question)}</div><div className='sub'><b>О:</b> {safeText(a.answer)}</div></div>)}{!(problemDraft.ai_answers||[]).length && <div className='sub'>Пока нет сохранённых ответов.</div>}<div className='sub'>История ответов не очищается при перегенерации вопросов.</div></div></div>
+        <ErrorBoundary fallbackTitle='Ошибка рендера этапа'>{active==='CONTEXT' ? <ContextStage contextStatus={contextStatusLabel} onGoProblem={goProblemFromContext} sourceTrace={sourceTrace} contextInput={contextInput} onUpdateContextField={updateContextField} documents={Array.isArray(documents)?documents:[]} links={(Array.isArray(links))?links:[]} knowledge={knowledge} coverage={contextCoverage} readiness={contextReadiness} missingInformation={contextMissing} problemHandoff={problemHandoff} indexingStatus={structured?.indexing_status||'idle'} runContextAnalyze={runContextAnalyze} onUpload={uploadContextFiles} onDeleteDocument={removeDocument} onDeleteLink={removeLink} linkDraft={linkDraft} setLinkDraft={setLinkDraft} onAddLink={addLink} />: active==='PROBLEM' ? <div className='problem-workspace'>
+          <div className='problem-left ui-card'><h4>Контекст для анализа</h4><div className='sub'>{contextInput.initiative_name}</div><div className='sub'>{contextInput.short_description}</div><div className='sub'>Готовность: {contextReadiness?.status ? `${contextReadiness.status} · ${contextReadiness.score ?? 0}%` : 'не рассчитана'}</div><div className='sub'>Процессы: {safeText((knowledge?.процессы||knowledge?.processes||[]).slice(0,5))}</div><div className='sub'>Системы: {safeText((knowledge?.системы||knowledge?.systems||[]).slice(0,5))}</div><div className='sub'>Роли: {safeText((knowledge?.роли||knowledge?.roles||[]).slice(0,5))}</div><div className='sub'>Context version: {contextArtifactVersion ?? '—'} · Problem source version: {problemDraft.source_context_version || 0}</div><Button variant='secondary' onClick={()=>loadLatestContextSnapshot()}>Обновить из контекста</Button>{problemDraft.source_context_version && contextArtifactVersion && problemDraft.source_context_version<contextArtifactVersion ? <div className='ui-card'><p className='sub'>Контекст изменился. Рекомендуется обновить анализ проблемы.</p><Button variant='secondary' onClick={generateProblem}>Обновить проблему по новому контексту</Button></div>:null}<div className='ui-card problem-answers-sticky'><h4 className='ai-answers-title'>Ответы пользователя</h4>{(problemDraft.ai_answers||[]).map((a:any,i:number)=><div key={`hist_${i}`} className='ai-answer-row'><div><b>В:</b> {safeText(a.question)}</div><div className='sub'><b>О:</b> {safeText(a.answer)}</div></div>)}{!(problemDraft.ai_answers||[]).length && <div className='sub'>Пока нет сохранённых ответов.</div>}<div className='sub'>История ответов не очищается при перегенерации вопросов.</div></div></div>
           <div className='problem-center ui-card'><h4>Формулировка проблемы</h4><label className='sub'>Ручная формулировка от PO</label><textarea className='ui-textarea' placeholder='В чём проблема?' value={problemDraft.main_problem||''} onChange={e=>setProblemDraft({...problemDraft,main_problem:e.target.value})}/><label className='sub'>Проблемы для БТ (AI, строгая нумерация)</label><textarea className='ui-textarea' value={problemDraft.problem_statement||''} onChange={e=>setProblemDraft({...problemDraft,problem_statement:e.target.value})}/><div className='ui-card-footer'><Button variant='primary' size='md' onClick={generateProblem} disabled={thinking}>{thinking?'Генерация...':'Сгенерировать'}</Button><Button variant='secondary' size='md' onClick={()=>saveProblem()}>Сохранить</Button><Button variant='soft' size='md' onClick={()=>saveProblem('ready')}>Принять как финальную проблему</Button><Button variant='ghost' size='md' onClick={()=>{const v=(problemDraft.versions||[]).slice(-1)[0]?.snapshot; if(v) setProblemDraft({...problemDraft,...v})}}>Вернуть предыдущую версию</Button></div><div className='sub'>Статус: {safeText(problemDraft.status||'draft')}</div></div>
           <div className='problem-right ui-card'><h4>AI уточняющие вопросы</h4><Button variant='soft' size='sm' fullWidth onClick={regenerateStageQuestions} disabled={questionGenLoading}>{questionGenLoading?'Генерация...':'Сгенерировать дополнительные вопросы'}</Button><div className='ai-sections'>{(problemDraft.clarifying_questions||[]).map((q:any,i:number)=>{const obj=typeof q==='string'?{id:`q_${i}`,text:q,answer:''}:q; return <div key={obj.id||i} className='ui-card ai-question-card'><b>Вопрос {i+1}</b><div className='sub'>{safeText(obj.text||obj)}</div><input className='ui-input' placeholder='Ваш ответ...' value={questionAnswers[obj.id] ?? obj.answer ?? ''} onChange={e=>setQuestionAnswers({...questionAnswers,[obj.id]:e.target.value})}/><div className='ui-actions'><Button variant='secondary' size='sm' fullWidth onClick={()=>answerQuestion(obj)} disabled={answerLoadingId===obj.id}>{answerLoadingId===obj.id?'Сохранение...':'Сохранить ответ'}</Button></div></div>})}{(problemDraft.ai_chat_history||[]).map((m:any,i:number)=><div key={i} className='ui-card'><b>{m.role==='user'?'Вы':'AI'}</b><div className='sub'>{safeText(m.text)}</div></div>)}</div>{stagePatch && <div className='ui-card'><div className='sub'>AI предлагает изменения.</div><div className='ui-card-footer'><Button variant='primary' size='sm' onClick={applyStagePatch}>Применить</Button><Button variant='secondary' onClick={()=>setStagePatch(null)}>Отклонить</Button></div></div>}</div>
         </div> : active==='GOAL' ? <div className='goal-screen'>
