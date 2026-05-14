@@ -168,3 +168,37 @@ def test_prompt_requests_english_json_keys():
     assert '"процессы":[]' not in prompt
     assert '"бизнес_сущности":[]' not in prompt
     assert '"покрытие":{' not in prompt
+
+
+def test_problem_handoff_contract_is_returned_for_problem_stage():
+    llm_payload = {
+        "processes": ["Автопролонгация ИБС"],
+        "systems": ["SFA IBS"],
+        "roles": ["Оператор"],
+        "problem_handoff": {
+            "what_found": ["Найден процесс автопролонгации"],
+            "key_facts": ["Оператор выполняет ручную проверку"],
+            "constraints": ["Нет BPMN"],
+            "ambiguities": ["Не описан SLA"],
+            "questions_before_problem": ["Какая целевая доля автоматизации?"],
+        },
+    }
+    agent, _ = _agent_with_response(llm_payload)
+    result = agent.analyze(FakeProject(), _minimal_payload(), previous_context={})
+    handoff = result["problem_handoff"]
+    assert set(handoff.keys()) == {"what_found", "key_facts", "constraints", "ambiguities", "questions_before_problem"}
+    assert handoff["key_facts"] == ["Оператор выполняет ручную проверку"]
+    assert handoff["questions_before_problem"] == ["Какая целевая доля автоматизации?"]
+
+
+def test_chunk_dicts_are_compacted_as_text_not_python_dict_repr():
+    llm = StaticLLM("{}")
+    agent = ContextIngestionAgent(llm)
+    payload = {
+        "context_input": {"short_description": "x"},
+        "documents": [{"id": "doc_chunks", "name": "notes.txt", "chunks": [{"order": 0, "text": "Первый фрагмент"}]}],
+        "links": [],
+    }
+    agent.analyze(FakeProject(), payload, previous_context={})
+    assert "Первый фрагмент" in llm.last_prompt
+    assert "{'order':" not in llm.last_prompt

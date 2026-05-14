@@ -15,7 +15,7 @@ export default function ContextStage(props:any){
   ]
   return <div className='context-page'><div className='ui-card page-section-gap'><b>{props.contextStatus}</b></div><div className='context-layout'>
     <ProjectOverviewCard fields={fields} onChange={props.onUpdateContextField}/>
-    <KnowledgeSourcesCard {...props}/>
+    <KnowledgeSourcesCard {...props} onRetryIndex={props.runContextAnalyze}/>
     <ExtractedKnowledgeCard knowledge={props.knowledge}/>
     <KnowledgeCoverageCard coverage={props.knowledge?.coverage || props.knowledge?.покрытие || {}} sourceTrace={props.sourceTrace||[]} />
     <AIAssistantCard onGoProblem={props.onGoProblem} allMetadataOnly={allMetadataOnly}/>

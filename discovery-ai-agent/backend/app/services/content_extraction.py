@@ -13,13 +13,14 @@ def _decode_text(content: bytes) -> str:
     return ""
 
 
-def _split_chunks(text: str, chunk_size: int = 2500, max_chunks: int = 10) -> list[str]:
+def split_text_chunks(text: str, chunk_size: int = 2500, max_chunks: int = 10) -> list[dict]:
     text = (text or "").strip()
     if not text:
         return []
-    out: list[str] = []
+    out: list[dict] = []
     for i in range(0, len(text), chunk_size):
-        out.append(text[i : i + chunk_size])
+        order = len(out)
+        out.append({"order": order, "text": text[i : i + chunk_size]})
         if len(out) >= max_chunks:
             break
     return out
@@ -27,14 +28,14 @@ def _split_chunks(text: str, chunk_size: int = 2500, max_chunks: int = 10) -> li
 
 def extract_text_from_upload(filename: str, content: bytes, mime_type: str | None = None) -> dict:
     ext = (filename or "").lower().split(".")[-1] if "." in (filename or "") else ""
-    if ext == "txt" or (mime_type or "").startswith("text/plain"):
+    if ext in {"txt", "md", "csv"} or (mime_type or "").startswith("text/plain"):
         text = _decode_text(content)
-        return {"text": text, "status": "completed" if text.strip() else "empty", "error": None, "chunks": _split_chunks(text)}
+        return {"text": text, "status": "completed" if text.strip() else "empty", "error": None, "chunks": split_text_chunks(text)}
     if ext == "docx":
         try:
             doc = Document(BytesIO(content))
             text = "\n".join([p.text for p in doc.paragraphs if (p.text or "").strip()])
-            return {"text": text, "status": "completed" if text.strip() else "empty", "error": None, "chunks": _split_chunks(text)}
+            return {"text": text, "status": "completed" if text.strip() else "empty", "error": None, "chunks": split_text_chunks(text)}
         except Exception as e:
             return {"text": "", "status": "failed", "error": str(e), "chunks": []}
     if ext == "pdf":

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agents.critic_agent import CriticAgent
@@ -10,16 +10,20 @@ from app.models.discovery import ArtifactType
 from app.repositories import discovery as repo
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.docx_export_service import build_docx
+from app.services.content_extraction import extract_text_from_upload
 from fastapi.responses import StreamingResponse
 import json
 from urllib import request, error
 import time
 import re
+import uuid
 
 router = APIRouter(prefix="/api", tags=["discovery"])
 orchestrator = None
 critic = None
 LLM_STATUS_SET = {'mock','not_configured','connected','error','timeout','unauthorized','model_not_found','backend_error'}
+SUPPORTED_CONTEXT_EXTENSIONS = {'txt', 'md', 'csv', 'docx', 'pdf', 'xlsx', 'xls'}
+MAX_CONTEXT_FILE_SIZE = 15 * 1024 * 1024
 
 SECTION_META = {
     "CONTEXT": ("Контекст", True), "PROBLEM": ("Проблема", True), "GOAL": ("Цель", True), "BUSINESS_EFFECT": ("Бизнес-эффект", True),
@@ -149,6 +153,42 @@ def _ensure_llm_ready(db: Session):
         'details': status['llm']
     })
 
+def _context_source_status(extraction_status: str) -> str:
+    if extraction_status == 'completed':
+        return 'ready'
+    if extraction_status in {'failed', 'unsupported'}:
+        return 'error'
+    return 'uploaded'
+
+def _file_ext(filename: str) -> str:
+    return (filename or '').lower().rsplit('.', 1)[-1] if '.' in (filename or '') else ''
+
+def _normalize_context_source(raw: dict, project_id: str, kind: str) -> dict:
+    src = raw if isinstance(raw, dict) else ({'url': str(raw)} if kind == 'link' else {'fileName': str(raw), 'title': str(raw)})
+    now = str(src.get('updatedAt') or src.get('updated_at') or src.get('createdAt') or src.get('created_at') or '')
+    source_id = src.get('id') or f"{kind}_{uuid.uuid4().hex[:12]}"
+    title = src.get('title') or src.get('name') or src.get('fileName') or src.get('filename') or src.get('url') or 'Без названия'
+    status = src.get('status') or ('ready' if src.get('extracted_text') or src.get('text_content') or src.get('chunks') else 'uploaded')
+    chunks = src.get('chunks') if isinstance(src.get('chunks'), list) else []
+    normalized = {
+        **src,
+        'id': source_id,
+        'projectId': src.get('projectId') or src.get('project_id') or project_id,
+        'title': title,
+        'type': src.get('type') or ('url' if kind == 'link' else _file_ext(str(title)) or 'file'),
+        'fileName': src.get('fileName') or src.get('filename') or src.get('name'),
+        'url': src.get('url'),
+        'size': int(src.get('size') or 0),
+        'createdAt': src.get('createdAt') or src.get('created_at') or now,
+        'updatedAt': src.get('updatedAt') or src.get('updated_at') or now,
+        'status': status,
+        'errorMessage': src.get('errorMessage') or src.get('error_message') or src.get('text_extraction_error'),
+        'chunksCount': int(src.get('chunksCount') or src.get('chunks_count') or len(chunks)),
+    }
+    if normalized.get('name') is None and normalized.get('fileName'):
+        normalized['name'] = normalized['fileName']
+    return normalized
+
 @router.get('/projects', response_model=list[ProjectRead])
 def get_projects(db: Session = Depends(get_db)): return repo.list_projects(db)
 @router.post('/projects', response_model=ProjectRead)
@@ -181,6 +221,56 @@ def put_artifact(project_id: str, artifact_type: ArtifactType, payload: Artifact
     if not p: raise HTTPException(404, 'Project not found')
     return repo.upsert_artifact(db, project_id, artifact_type, payload.content, payload.structured_content, payload.rich_content_json, payload.rendered_html)
 
+@router.post('/projects/{project_id}/context/sources/upload')
+async def upload_context_sources(project_id: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    p = repo.get_project(db, project_id)
+    if not p:
+        raise HTTPException(404, 'Проект не найден')
+    sources = []
+    for upload in files:
+        content = await upload.read()
+        ext = _file_ext(upload.filename or '')
+        now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        base = {
+            'id': f"doc_{uuid.uuid4().hex[:12]}",
+            'projectId': project_id,
+            'title': upload.filename or 'Без названия',
+            'type': ext or (upload.content_type or 'file'),
+            'fileName': upload.filename or '',
+            'name': upload.filename or '',
+            'size': len(content),
+            'createdAt': now,
+            'updatedAt': now,
+            'mimeType': upload.content_type,
+            'status': 'uploaded',
+            'errorMessage': None,
+            'chunksCount': 0,
+        }
+        if len(content) > MAX_CONTEXT_FILE_SIZE:
+            sources.append({**base, 'status': 'error', 'text_extraction_status': 'failed', 'errorMessage': 'Файл слишком большой. Максимальный размер: 15 МБ.', 'text_extraction_error': 'Файл слишком большой. Максимальный размер: 15 МБ.'})
+            continue
+        if ext not in SUPPORTED_CONTEXT_EXTENSIONS:
+            sources.append({**base, 'status': 'error', 'text_extraction_status': 'unsupported', 'errorMessage': f'Неподдерживаемый формат файла: {ext or "unknown"}', 'text_extraction_error': f'Неподдерживаемый формат файла: {ext or "unknown"}'})
+            continue
+        extracted = extract_text_from_upload(upload.filename or '', content, upload.content_type)
+        chunks = [
+            {**chunk, 'sourceId': base['id'], 'projectId': project_id, 'metadata': {'fileName': base['fileName'], 'type': base['type']}}
+            for chunk in (extracted.get('chunks') or [])
+        ]
+        extraction_status = extracted.get('status') or 'failed'
+        sources.append({
+            **base,
+            'status': _context_source_status(extraction_status),
+            'text_extraction_status': extraction_status,
+            'text_extraction_error': extracted.get('error'),
+            'errorMessage': extracted.get('error'),
+            'text_extracted_at': now if extraction_status == 'completed' else None,
+            'extracted_text': extracted.get('text') or '',
+            'chunks': chunks,
+            'chunksCount': len(chunks),
+        })
+    return {'ok': True, 'sources': sources}
+
 
 @router.post('/projects/{project_id}/context/analyze')
 def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db)):
@@ -192,6 +282,8 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     context_input = payload.get('context_input') or {}
     links = payload.get('links') or []
     documents = payload.get('documents') or []
+    documents = [_normalize_context_source(d, project_id, 'document') for d in documents]
+    links = [_normalize_context_source(l, project_id, 'link') for l in links]
     orchestrator = AgentOrchestrator(create_llm(db))
     agent = orchestrator.get_agent(ArtifactType.CONTEXT.value)
     if not agent or not hasattr(agent, 'analyze'):
@@ -221,10 +313,12 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     structured = {
         'context_input': context_input,
         'documents': documents,
+        'uploaded_files': documents,
         'links': links,
         'extracted_knowledge': extracted,
         'source_trace': analysis.get('source_trace') or [],
         'overview_for_ai': analysis.get('overview_for_ai') or {},
+        'problem_handoff': analysis.get('problem_handoff') or extracted.get('problem_handoff') or {},
         'knowledge_history': history[-30:],
         'indexing_status': 'completed'
     }

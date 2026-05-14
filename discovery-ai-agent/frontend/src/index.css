@@ -280,6 +280,12 @@ h4 { font-size: 14px; font-weight: 700; }
 .source-ico.pdf { background: var(--ui-danger-soft); color: var(--ui-danger); }
 .source-ico.doc { background: var(--ui-primary-soft); color: var(--ui-primary); }
 .source-ico.xls { background: #ecfdf5; color: var(--ui-success); }
+.source-icon { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+.source-icon--pdf { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.source-icon--doc { background: var(--ui-primary-soft); color: var(--ui-primary); }
+.source-icon--xls { background: #ecfdf5; color: var(--ui-success); }
+.source-icon--link { background: #f1f5f9; color: var(--ui-text-muted); }
+.empty-context-state { border: 1px dashed var(--ui-border-strong); border-radius: var(--ui-radius-xl); padding: var(--ui-space-5); margin-top: var(--ui-space-3); background: var(--ui-surface-soft); }
 .coverage-list, .assistant-stack { display: flex; flex-direction: column; gap: 10px; }
 .coverage-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .coverage-left { display: inline-flex; align-items: center; gap: 8px; }

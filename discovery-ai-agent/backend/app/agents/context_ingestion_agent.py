@@ -52,7 +52,10 @@ class ContextIngestionAgent(BaseAgent):
             "Target JSON structure: "
             "{\"processes\":[],\"systems\":[],\"roles\":[],\"integrations\":[],\"kpi\":[],\"business_entities\":[],\"documents\":[],\"terms\":[],"
             "\"coverage\":{\"documents\":false,\"systems\":false,\"processes\":false,\"roles\":false,\"integrations\":false,\"bpmn\":false,\"kpi\":false,\"sla\":false,\"constraints\":false},"
-            "\"missing_information\":[],\"recommendations\":[]}. "
+            "\"missing_information\":[],\"recommendations\":[],"
+            "\"problem_handoff\":{\"what_found\":[],\"key_facts\":[],\"constraints\":[],\"ambiguities\":[],\"questions_before_problem\":[]}}. "
+            "For problem_handoff write only facts grounded in supplied context and source_trace. "
+            "If data is insufficient, explicitly list missing facts in ambiguities and questions_before_problem. "
             f"Project: {project.project_name}. "
             f"Overview: {json.dumps(overview_for_ai, ensure_ascii=False)}. "
             f"Manual context_input: {compact_input}. "
@@ -71,11 +74,13 @@ class ContextIngestionAgent(BaseAgent):
 
         normalized["missing_information"] = list(dict.fromkeys((normalized.get("missing_information") or []) + missing_information))
         normalized["source_trace"] = source_trace
+        normalized["problem_handoff"] = self._normalize_problem_handoff(normalized.get("problem_handoff"), normalized, missing_information)
 
         return {
             "extracted_knowledge": normalized,
             "source_trace": source_trace,
             "overview_for_ai": overview_for_ai,
+            "problem_handoff": normalized["problem_handoff"],
             "indexing_status": "completed",
             "analyzed_at": datetime.utcnow().isoformat(),
         }
@@ -126,7 +131,7 @@ class ContextIngestionAgent(BaseAgent):
         elif content_level == "chunks":
             raw_chunks = s.get("chunks")
             if isinstance(raw_chunks, list):
-                chunks = [self._truncate_str(str(c), self.MAX_SOURCE_CHARS // 3) for c in raw_chunks[: self.MAX_CHUNKS_PER_SOURCE]]
+                chunks = [self._truncate_str(str(c.get("text") if isinstance(c, dict) else c), self.MAX_SOURCE_CHARS // 3) for c in raw_chunks[: self.MAX_CHUNKS_PER_SOURCE]]
         return {
             "id": s.get("id"),
             "name": s.get("name") or s.get("title"),
@@ -169,6 +174,7 @@ class ContextIngestionAgent(BaseAgent):
             "missing_information": list(dict.fromkeys(missing_information + (["Недостаточно данных в ручном описании контекста."] if not any(overview_for_ai.values()) else []))),
             "recommendations": [],
             "source_trace": source_trace,
+            "problem_handoff": self._normalize_problem_handoff(None, {"documents": docs, "coverage": self._default_coverage()}, missing_information),
         }
 
     def _normalize_extracted_knowledge(self, data: dict) -> dict:
@@ -185,6 +191,7 @@ class ContextIngestionAgent(BaseAgent):
             "terms": self._to_list(d.get("terms") or d.get("термины")),
             "missing_information": self._to_list(d.get("missing_information") or d.get("недостающая_информация") or d.get("missingInfo")),
             "recommendations": self._to_list(d.get("recommendations") or d.get("рекомендации")),
+            "problem_handoff": self._normalize_problem_handoff(d.get("problem_handoff") or d.get("problemHandoff") or d.get("выжимка_для_проблемы"), d, []),
             "source_trace": self._to_list(d.get("source_trace")),
             "coverage": {
                 **self._default_coverage(),
@@ -226,6 +233,26 @@ class ContextIngestionAgent(BaseAgent):
 
     def _default_coverage(self) -> dict:
         return {"documents": False, "systems": False, "processes": False, "roles": False, "integrations": False, "bpmn": False, "kpi": False, "sla": False, "constraints": False}
+
+    def _normalize_problem_handoff(self, value, knowledge: dict, missing_information: list[str]) -> dict:
+        v = value if isinstance(value, dict) else {}
+        key_facts = self._to_list(v.get("key_facts") or v.get("ключевые_факты"))
+        if not key_facts:
+            key_facts = []
+            for key in ["processes", "systems", "roles", "integrations", "kpi", "business_entities", "documents", "terms"]:
+                for item in self._to_list(knowledge.get(key))[:4]:
+                    key_facts.append(str(item))
+        ambiguities = self._to_list(v.get("ambiguities") or v.get("неясности")) + self._to_list(missing_information)
+        questions = self._to_list(v.get("questions_before_problem") or v.get("что_уточнить") or v.get("questions"))
+        if not questions and ambiguities:
+            questions = ["Уточнить недостающие данные перед формулировкой проблемы."]
+        return {
+            "what_found": self._to_list(v.get("what_found") or v.get("что_найдено")) or key_facts[:5],
+            "key_facts": list(dict.fromkeys([str(x) for x in key_facts]))[:20],
+            "constraints": self._to_list(v.get("constraints") or v.get("ограничения")),
+            "ambiguities": list(dict.fromkeys([str(x) for x in ambiguities]))[:20],
+            "questions_before_problem": list(dict.fromkeys([str(x) for x in questions]))[:12],
+        }
 
     def _to_list(self, value):
         if value is None:

@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
 export class ApiError extends Error {
   status: number
@@ -25,6 +25,12 @@ export async function parseApiError(res: Response): Promise<ApiError> {
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { headers: { 'Content-Type': 'application/json' }, ...options })
+  if (!res.ok) throw await parseApiError(res)
+  return res.json()
+}
+
+export async function apiForm<T>(path: string, body: FormData): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', body })
   if (!res.ok) throw await parseApiError(res)
   return res.json()
 }

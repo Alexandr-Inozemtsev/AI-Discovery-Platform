@@ -2,7 +2,7 @@ import { Download, MoreHorizontal, Database, RefreshCcw, FileText, FileSpreadshe
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ApiError, api } from '../api/client'
+import { ApiError, api, apiForm } from '../api/client'
 import { ArtifactType, Project } from '../types/discovery'
 import AIActionBar from '../ui/components/AIActionBar'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -84,6 +84,29 @@ const workflowStages = [
 const detectLinkType=(url:string)=>{const u=url.toLowerCase(); if(u.includes('jira')) return 'Jira'; if(u.includes('confluence')) return 'Confluence'; if(u.includes('figma')) return 'Figma'; if(u.includes('draw.io')) return 'Draw.io'; if(u.includes('swagger')) return 'Swagger'; if(u.includes('superset')) return 'Superset'; if(u.includes('kibana')) return 'Kibana'; if(u.includes('bi')) return 'BI'; return 'Другое'}
 
 const sourceIcon=(name:string)=>{const n=name.toLowerCase(); if(n.includes('.pdf')) return 'pdf'; if(n.includes('.doc')) return 'doc'; if(n.includes('.xls')) return 'xls'; if(n.includes('jira')) return 'jira'; if(n.includes('confluence')) return 'confluence'; if(n.includes('figma')) return 'figma'; if(n.includes('bi')) return 'bi'; return 'default'}
+const CONTEXT_FILE_EXTENSIONS = ['docx','pdf','txt','md','xlsx','xls','csv']
+const MAX_CONTEXT_FILE_SIZE = 15 * 1024 * 1024
+const extensionOf=(name:string)=>String(name||'').toLowerCase().split('.').pop()||''
+const normalizeContextSource=(raw:any,projectId?:string,kind:'document'|'link'='document')=>{
+  const now=new Date().toISOString()
+  const title=raw?.title||raw?.name||raw?.fileName||raw?.url||'Без названия'
+  const chunks=Array.isArray(raw?.chunks)?raw.chunks:[]
+  return {
+    ...raw,
+    id: raw?.id || `${kind==='document'?'doc':'link'}_${Date.now()}_${Math.random().toString(16).slice(2,8)}`,
+    projectId: raw?.projectId || projectId || '',
+    title,
+    name: raw?.name || raw?.fileName || title,
+    fileName: raw?.fileName || raw?.name,
+    type: raw?.type || (kind==='link'?'url':extensionOf(title)||'file'),
+    size: Number(raw?.size||0),
+    createdAt: raw?.createdAt || raw?.created_at || now,
+    updatedAt: now,
+    status: raw?.status || 'uploaded',
+    errorMessage: raw?.errorMessage || raw?.text_extraction_error || '',
+    chunksCount: Number(raw?.chunksCount || chunks.length || 0),
+  }
+}
 
 const demoDocs=[
   {name:'BRD_Автопролонгация_ИБС_v1.0.pdf',size:'12.4 MB',date:'06.05.2026'},
@@ -138,7 +161,12 @@ export default function ProjectPage(){
   useEffect(()=>{if(active!=='CONTEXT' || !contextReady) return; const t=setTimeout(()=>{saveContextInput()},800); return ()=>clearTimeout(t)},[contextInput,documents,links,knowledge,contextReady])
 
 
-  const buildContextPayload=()=>({
+  const buildContextPayload=(overrides:any={})=>{
+    const nextDocuments = overrides.documents ?? documents
+    const nextLinks = overrides.links ?? links
+    const nextKnowledge = overrides.knowledge ?? knowledge
+    const nextStructured = overrides.structured ?? structured
+    return ({
     initiative_name: contextInput.initiative_name,
     short_description: contextInput.short_description,
     initiative_goal: contextInput.product_goal || contextInput.initiative_goal,
@@ -159,22 +187,59 @@ export default function ProjectPage(){
       process_owner: contextInput.business_process_owner || contextInput.process_owner,
       discovery_owner: contextInput.discovery_responsible || contextInput.discovery_owner
     },
-    links,
-    uploaded_files: documents,
-    extracted_knowledge: knowledge,
-    knowledge_coverage: knowledge?.покрытие || {},
-    indexing_status: structured?.indexing_status || 'idle',
-    indexed_at: structured?.indexed_at || null,
-    knowledge_history: structured?.knowledge_history||[]
-  })
+    links: nextLinks,
+    uploaded_files: nextDocuments,
+    documents: nextDocuments,
+    extracted_knowledge: nextKnowledge,
+    problem_handoff: nextStructured?.problem_handoff || nextKnowledge?.problem_handoff || {},
+    source_trace: nextStructured?.source_trace || nextKnowledge?.source_trace || [],
+    knowledge_coverage: nextKnowledge?.coverage || nextKnowledge?.покрытие || {},
+    indexing_status: nextStructured?.indexing_status || 'idle',
+    indexed_at: nextStructured?.indexed_at || null,
+    knowledge_history: nextStructured?.knowledge_history||[]
+  })}
 
-  const saveContextInput=async()=>{try{if(!projectId) return; setSaving('saving'); const a=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:buildContextPayload()})}); setVer(a.version); setUpdated(a.updated_at); setStructured(a.structured_content||{}); setSaving('saved')}catch{setSaving('error'); setMsg('Ошибка сохранения контекста')}}
-  const runContextAnalyze=async()=>{try{setThinking(true); await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents,links})}); const now=new Date().toISOString(); const nextDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,ai_status:'проиндексирован'})); setDocuments(nextDocs); setKnowledge(r.extracted_knowledge); setStructured({...structured,indexing_status:r.indexing_status||'completed',indexed_at:now}); setMsg('Индексация знаний завершена'); await saveContextInput()}catch(e:any){setMsg(e?.message||'Ошибка индексации')}finally{setThinking(false)}}
+  const saveContextInput=async(overrides:any={})=>{try{if(!projectId) return; setSaving('saving'); const a=await api<any>(`/projects/${projectId}/artifacts/CONTEXT`,{method:'PUT',body:JSON.stringify({content:'',structured_content:buildContextPayload(overrides)})}); setVer(a.version); setUpdated(a.updated_at); setStructured(a.structured_content||{}); setSaving('saved'); return a}catch{setSaving('error'); setMsg('Ошибка сохранения контекста')}}
+  const runContextAnalyze=async()=>{try{setThinking(true); await ensureRuntimeReady(); const indexingDocs=(Array.isArray(documents)?documents:[]).map((d:any)=>({...d,status:'indexing',updatedAt:new Date().toISOString()})); setDocuments(indexingDocs); const r=await api<any>(`/projects/${projectId}/context/analyze`,{method:'POST',body:JSON.stringify({context_input:contextInput,documents:indexingDocs,links})}); const now=new Date().toISOString(); const extracted=r.extracted_knowledge; const trace=Array.isArray(r.source_trace)?r.source_trace:(Array.isArray(extracted?.source_trace)?extracted.source_trace:[]); const nextDocs=indexingDocs.map((d:any)=>{const tr=trace.find((x:any)=>x.source_type==='document'&&String(x.source_id)===String(d.id)); return {...d,status:tr?.used?'ready':(d.errorMessage?'error':'uploaded'),ai_status:tr?.used?'проиндексирован':'требует текста',updatedAt:now}}); const nextStructured={...structured,indexing_status:r.indexing_status||'completed',indexed_at:now,source_trace:trace,problem_handoff:r.problem_handoff||extracted?.problem_handoff||{}}; setDocuments(nextDocs); setKnowledge(extracted); setStructured(nextStructured); setMsg('Индексация знаний завершена'); await saveContextInput({documents:nextDocs,knowledge:extracted,structured:nextStructured})}catch(e:any){const errored=(Array.isArray(documents)?documents:[]).map((d:any)=>d.status==='indexing'?{...d,status:'error',errorMessage:e?.message||'Ошибка индексации'}:d); setDocuments(errored); setMsg(e?.message||'Ошибка индексации')}finally{setThinking(false)}}
+
+  const uploadContextFiles=async(e:any)=>{
+    const files=Array.from(e.target.files||[]) as globalThis.File[]
+    e.target.value=''
+    if(!files.length) return
+    const existingNames=new Set((documents||[]).map((d:any)=>String(d.fileName||d.name||d.title||'').toLowerCase()))
+    const accepted:globalThis.File[]=[]
+    const rejected:any[]=[]
+    for(const f of files){
+      const ext=extensionOf(f.name)
+      if(existingNames.has(f.name.toLowerCase())){rejected.push(normalizeContextSource({fileName:f.name,name:f.name,size:f.size,status:'error',errorMessage:'Файл уже добавлен'},projectId,'document')); continue}
+      if(!CONTEXT_FILE_EXTENSIONS.includes(ext)){rejected.push(normalizeContextSource({fileName:f.name,name:f.name,size:f.size,status:'error',text_extraction_status:'unsupported',errorMessage:`Неподдерживаемый формат: ${ext||'unknown'}`},projectId,'document')); continue}
+      if(f.size>MAX_CONTEXT_FILE_SIZE){rejected.push(normalizeContextSource({fileName:f.name,name:f.name,size:f.size,status:'error',text_extraction_status:'failed',errorMessage:'Файл слишком большой. Максимальный размер: 15 МБ.'},projectId,'document')); continue}
+      accepted.push(f)
+    }
+    let uploaded:any[]=[]
+    if(accepted.length){
+      try{
+        setSaving('saving')
+        const form=new FormData()
+        accepted.forEach(f=>form.append('files',f))
+        const r=await apiForm<any>(`/projects/${projectId}/context/sources/upload`,form)
+        uploaded=(r.sources||[]).map((s:any)=>normalizeContextSource(s,projectId,'document'))
+      }catch(err:any){
+        uploaded=accepted.map(f=>normalizeContextSource({fileName:f.name,name:f.name,size:f.size,status:'error',errorMessage:err?.message||'Ошибка загрузки файла'},projectId,'document'))
+      }
+    }
+    const next=[...(documents||[]),...uploaded,...rejected]
+    const nextStructured={...structured,indexing_status:'requires_update'}
+    setDocuments(next)
+    setStructured(nextStructured)
+    await saveContextInput({documents:next,structured:nextStructured})
+    setMsg(rejected.length?`Добавлены файлы, часть отклонена: ${rejected.length}`:'Файлы добавлены. Обновите контекст для анализа.')
+  }
 
 
-  const removeDocument = async(index:number)=>{if(!confirm('Удалить файл из контекста?')) return; const next=(documents||[]).filter((_:any,i:number)=>i!==index); try{setDocuments(next); setStructured((s:any)=>({...s,indexing_status:'requires_update'})); await saveContextInput(); setMsg('Файл удалён. Контекст требует обновления.')}catch{setMsg('Ошибка удаления файла')}}
-  const removeLink = async(index:number)=>{if(!confirm('Удалить ссылку из контекста?')) return; const next=(links||[]).filter((_:any,i:number)=>i!==index); try{setLinks(next); setStructured((s:any)=>({...s,indexing_status:'requires_update'})); await saveContextInput(); setMsg('Ссылка удалена. Контекст требует обновления.')}catch{setMsg('Ошибка удаления ссылки')}}
-  const addLink = ()=>{const v=linkDraft.trim(); if(!v) return; setLinks([...(links||[]),{id:`link_${Date.now()}`,url:v,type:detectLinkType(v),status:'Добавлено',created_at:new Date().toISOString()} as any]); setStructured((s:any)=>({...s,indexing_status:'requires_update'})); setLinkDraft('')}
+  const removeDocument = async(index:number)=>{if(!confirm('Удалить файл из контекста?')) return; const next=(documents||[]).filter((_:any,i:number)=>i!==index); const nextStructured={...structured,indexing_status:'requires_update'}; try{setDocuments(next); setStructured(nextStructured); await saveContextInput({documents:next,structured:nextStructured}); setMsg('Файл удалён. Контекст требует обновления.')}catch{setMsg('Ошибка удаления файла')}}
+  const removeLink = async(index:number)=>{if(!confirm('Удалить ссылку из контекста?')) return; const next=(links||[]).filter((_:any,i:number)=>i!==index); const nextStructured={...structured,indexing_status:'requires_update'}; try{setLinks(next); setStructured(nextStructured); await saveContextInput({links:next,structured:nextStructured}); setMsg('Ссылка удалена. Контекст требует обновления.')}catch{setMsg('Ошибка удаления ссылки')}}
+  const addLink = ()=>{const v=linkDraft.trim(); if(!v) return; try{new URL(v)}catch{setMsg('Введите корректный URL ссылки'); return} const duplicate=(links||[]).some((l:any)=>String(l?.url||l).trim().toLowerCase()===v.toLowerCase()); if(duplicate){setMsg('Такая ссылка уже добавлена'); return} const next=[...(links||[]),normalizeContextSource({url:v,type:detectLinkType(v),status:'uploaded'},projectId,'link') as any]; setLinks(next); setStructured((s:any)=>({...s,indexing_status:'requires_update'})); setLinkDraft('')}
 
   const normalizeProblemStatement=(value:string)=>{
     const text=(value||'').trim()
@@ -297,7 +362,7 @@ export default function ProjectPage(){
           <div className='ui-actions'><span className='sub'>Версия: {ver??0}</span><span className='sub'>Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</span>{active!=='CONTEXT' && <Button variant='primary' size='sm' onClick={save}>Сохранить</Button>}{active!=='CONTEXT' && <Button variant='secondary' size='sm' onClick={gen} disabled={busy}>Сгенерировать</Button>}{active!=='CONTEXT' && <Button variant='secondary' size='sm' onClick={validate} disabled={busy}>Проверить</Button>}{active==='FINAL_BT' && <ButtonLink variant='icon' size='sm' href={`http://localhost:8000/api/projects/${projectId}/export/docx`}><Download size={16}/></ButtonLink>}{active!=='CONTEXT' && <Button variant='icon' size='sm' aria-label='Дополнительные действия'><MoreHorizontal size={16}/></Button>}</div>
         </div>
 
-        <ErrorBoundary fallbackTitle='Ошибка рендера этапа'>{active==='CONTEXT' ? <ContextStage contextStatus={contextStatusLabel} onGoProblem={()=>setActive('PROBLEM')} sourceTrace={sourceTrace} contextInput={contextInput} onUpdateContextField={(key:string,value:string)=>setContextInput((prev:any)=>({...prev,[key]:value}))} documents={Array.isArray(documents)?documents:[]} links={(Array.isArray(links))?links:[]} knowledge={knowledge} runContextAnalyze={runContextAnalyze} onUpload={(e:any)=>{const files=Array.from(e.target.files||[]).map((f:any,idx:number)=>({id:`doc_${Date.now()}_${idx}`,name:f.name,type:f.type||'unknown',size:f.size,created_at:new Date().toISOString(),ai_status:'добавлен',text_extraction_status:'not_available',text_extraction_error:'Upload content bytes are not available in current flow',text_extracted_at:null,extracted_text:'',chunks:[]})); setDocuments([...(documents||[]),...files]); setStructured((s:any)=>({...s,indexing_status:'requires_update'}))}} onDeleteDocument={removeDocument} onDeleteLink={removeLink} linkDraft={linkDraft} setLinkDraft={setLinkDraft} onAddLink={addLink} />: active==='PROBLEM' ? <div className='problem-workspace'>
+        <ErrorBoundary fallbackTitle='Ошибка рендера этапа'>{active==='CONTEXT' ? <ContextStage contextStatus={contextStatusLabel} onGoProblem={()=>setActive('PROBLEM')} sourceTrace={sourceTrace} contextInput={contextInput} onUpdateContextField={(key:string,value:string)=>setContextInput((prev:any)=>({...prev,[key]:value}))} documents={Array.isArray(documents)?documents:[]} links={(Array.isArray(links))?links:[]} knowledge={knowledge} runContextAnalyze={runContextAnalyze} onUpload={uploadContextFiles} onDeleteDocument={removeDocument} onDeleteLink={removeLink} linkDraft={linkDraft} setLinkDraft={setLinkDraft} onAddLink={addLink} />: active==='PROBLEM' ? <div className='problem-workspace'>
           <div className='problem-left ui-card'><h4>Контекст для анализа</h4><div className='sub'>{contextInput.initiative_name}</div><div className='sub'>{contextInput.short_description}</div><div className='sub'>Процессы: {safeText((knowledge?.процессы||knowledge?.processes||[]).slice(0,5))}</div><div className='sub'>Системы: {safeText((knowledge?.системы||knowledge?.systems||[]).slice(0,5))}</div><div className='sub'>Роли: {safeText((knowledge?.роли||knowledge?.roles||[]).slice(0,5))}</div><Button variant='secondary' onClick={()=>loadArtifact('CONTEXT')}>Обновить из контекста</Button>{problemDraft.source_context_version && ver && problemDraft.source_context_version<ver ? <div className='ui-card'><p className='sub'>Контекст изменился. Рекомендуется обновить анализ проблемы.</p><Button variant='secondary' onClick={generateProblem}>Обновить проблему по новому контексту</Button></div>:null}<div className='ui-card problem-answers-sticky'><h4 className='ai-answers-title'>Ответы пользователя</h4>{(problemDraft.ai_answers||[]).map((a:any,i:number)=><div key={`hist_${i}`} className='ai-answer-row'><div><b>В:</b> {safeText(a.question)}</div><div className='sub'><b>О:</b> {safeText(a.answer)}</div></div>)}{!(problemDraft.ai_answers||[]).length && <div className='sub'>Пока нет сохранённых ответов.</div>}<div className='sub'>История ответов не очищается при перегенерации вопросов.</div></div></div>
           <div className='problem-center ui-card'><h4>Формулировка проблемы</h4><label className='sub'>Ручная формулировка от PO</label><textarea className='ui-textarea' placeholder='В чём проблема?' value={problemDraft.main_problem||''} onChange={e=>setProblemDraft({...problemDraft,main_problem:e.target.value})}/><label className='sub'>Проблемы для БТ (AI, строгая нумерация)</label><textarea className='ui-textarea' value={problemDraft.problem_statement||''} onChange={e=>setProblemDraft({...problemDraft,problem_statement:e.target.value})}/><div className='ui-card-footer'><Button variant='primary' size='md' onClick={generateProblem} disabled={thinking}>{thinking?'Генерация...':'Сгенерировать'}</Button><Button variant='secondary' size='md' onClick={()=>saveProblem()}>Сохранить</Button><Button variant='soft' size='md' onClick={()=>saveProblem('ready')}>Принять как финальную проблему</Button><Button variant='ghost' size='md' onClick={()=>{const v=(problemDraft.versions||[]).slice(-1)[0]?.snapshot; if(v) setProblemDraft({...problemDraft,...v})}}>Вернуть предыдущую версию</Button></div><div className='sub'>Статус: {safeText(problemDraft.status||'draft')}</div></div>
           <div className='problem-right ui-card'><h4>AI уточняющие вопросы</h4><Button variant='soft' size='sm' fullWidth onClick={regenerateStageQuestions} disabled={questionGenLoading}>{questionGenLoading?'Генерация...':'Сгенерировать дополнительные вопросы'}</Button><div className='ai-sections'>{(problemDraft.clarifying_questions||[]).map((q:any,i:number)=>{const obj=typeof q==='string'?{id:`q_${i}`,text:q,answer:''}:q; return <div key={obj.id||i} className='ui-card ai-question-card'><b>Вопрос {i+1}</b><div className='sub'>{safeText(obj.text||obj)}</div><input className='ui-input' placeholder='Ваш ответ...' value={questionAnswers[obj.id] ?? obj.answer ?? ''} onChange={e=>setQuestionAnswers({...questionAnswers,[obj.id]:e.target.value})}/><div className='ui-actions'><Button variant='secondary' size='sm' fullWidth onClick={()=>answerQuestion(obj)} disabled={answerLoadingId===obj.id}>{answerLoadingId===obj.id?'Сохранение...':'Сохранить ответ'}</Button></div></div>})}{(problemDraft.ai_chat_history||[]).map((m:any,i:number)=><div key={i} className='ui-card'><b>{m.role==='user'?'Вы':'AI'}</b><div className='sub'>{safeText(m.text)}</div></div>)}</div>{stagePatch && <div className='ui-card'><div className='sub'>AI предлагает изменения.</div><div className='ui-card-footer'><Button variant='primary' size='sm' onClick={applyStagePatch}>Применить</Button><Button variant='secondary' onClick={()=>setStagePatch(null)}>Отклонить</Button></div></div>}</div>
