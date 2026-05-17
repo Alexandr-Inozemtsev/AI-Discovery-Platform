@@ -1,4 +1,4 @@
-# Agent Runtime Contract
+# Контракт Agent Runtime
 
 Дата: 2026-05-14
 
