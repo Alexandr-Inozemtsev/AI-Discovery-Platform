@@ -22,7 +22,7 @@
 - [Контракт Agent Runtime](architecture/agent-runtime-contract.md)
 - [Экспертный review Product AI Agents](architecture/product-ai-agents-architecture-review.md)
 - [Целевая архитектура Product AI Agents](architecture/product-ai-agents-target-architecture.md)
-- [ADR-002: Целевая модель Product AI Agents](architecture/ADR-002-product-ai-agents-target-architecture.md)
+- [ADR-003: Целевая модель Product AI Agents](architecture/ADR-003-product-ai-agents-target-architecture.md)
 - [Архитектурные схемы](architecture/diagrams/README.md)
 - [Текущий API contract](api/openapi-contracts-current.md)
 - [Backend error envelope](api/error-envelope.md)

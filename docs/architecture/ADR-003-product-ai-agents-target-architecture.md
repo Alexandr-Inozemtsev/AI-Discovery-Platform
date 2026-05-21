@@ -1,11 +1,11 @@
-# ADR-002: Целевая модель Product AI Agents
+# ADR-003: Целевая модель Product AI Agents
 
 Дата: 2026-05-22  
-Статус: рекомендовано к принятию, требует подтверждения владельцем продукта/архитектуры перед реализацией  
+Статус: draft, рекомендовано к принятию после ARCH-PA-01 approval  
 Scope: Product AI Agents внутри backend AI Discovery Platform  
 Не scope: Global Codex Delivery Agents, frontend redesign, DB migration, внешние AI frameworks.
 
-Примечание по нумерации: в репозитории уже существует `docs/architecture/adr-002-target-platform-evolution.md`. Этот файл создан с именем `ADR-002-product-ai-agents-target-architecture.md` по текущей задаче. Перед финальным принятием ADR нужно решить, оставить такой номер как тематический ADR, переименовать документ в `ADR-003` или провести renumbering архитектурных решений.
+Примечание по нумерации: `docs/architecture/adr-002-target-platform-evolution.md` сохраняет номер `ADR-002` и смысл решения по эволюции платформы. ADR по Product AI Agents выделен в отдельный номер `ADR-003`, чтобы исключить конфликт архитектурных ссылок.
 
 ## Контекст
 

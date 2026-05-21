@@ -394,7 +394,7 @@ Stage-specific prompts лучше одного универсального prom
 Связанные документы:
 
 - [Целевая архитектура Product AI Agents](product-ai-agents-target-architecture.md);
-- [ADR-002 Product AI Agents target architecture](ADR-002-product-ai-agents-target-architecture.md);
+- [ADR-003 Product AI Agents target architecture](ADR-003-product-ai-agents-target-architecture.md);
 - [Backlog по архитектурному решению Product AI Agents](../backlog/product-ai-agents-architecture-decision-backlog.md);
 - [Agent Runtime Contract](agent-runtime-contract.md);
 - [SimpleRetriever Contract](simple-retriever-contract.md);
@@ -407,4 +407,4 @@ Stage-specific prompts лучше одного универсального prom
 - Где хранить prompt templates: Python constants, DB, markdown registry или отдельный config package.
 - Нужно ли versioned API response для generation endpoints или достаточно backward-compatible fields.
 - Какие artifact types входят в MVP migration scope, а какие остаются в MMP.
-- Как согласовать нумерацию ADR: в репозитории уже есть `adr-002-target-platform-evolution.md`, а новый ADR создан по заданному пути `ADR-002-product-ai-agents-target-architecture.md`.
+- Нужен финальный approval `ADR-003` владельцем архитектуры перед началом BE-02-05/BE-02-06.

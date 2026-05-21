@@ -12,7 +12,7 @@
 Связанные документы:
 
 - [Экспертный review архитектуры Product AI Agents](product-ai-agents-architecture-review.md);
-- [ADR-002 Product AI Agents target architecture](ADR-002-product-ai-agents-target-architecture.md);
+- [ADR-003 Product AI Agents target architecture](ADR-003-product-ai-agents-target-architecture.md);
 - [Agent Runtime Contract](agent-runtime-contract.md);
 - [SimpleRetriever Contract](simple-retriever-contract.md);
 - [ADR-001 AI/RAG/framework selection](ADR-001-agent-and-rag-framework-selection.md);
@@ -225,4 +225,3 @@ Endpoint paths должны сохраняться до отдельного ver
 - Какие stages входят в первую миграционную волну.
 - Какие golden datasets доступны для Problem/Goal/Requirements.
 - Нужно ли хранить raw LLM response для отладки или достаточно redacted diagnostics.
-

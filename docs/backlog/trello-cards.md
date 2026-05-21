@@ -58,7 +58,7 @@ Labels: Архитектура, Backend, MVP, Риск
 Цель: стабилизировать agent runtime без замены платформы внешним framework.
 Описание: все агенты должны работать через единый контракт запуска, результата и ошибок.
 Критерии приёмки: trace id, prompt version, provider/model metadata, warnings/errors и fallback policy описаны.
-Dependencies: ADR-002, LLM settings, audit log.
+Dependencies: ADR-002 target platform evolution, ADR-003 Product AI Agents target architecture, LLM settings, audit log.
 Definition of Done: runtime roadmap и контракт готовы к реализации.
 
 Checklist:

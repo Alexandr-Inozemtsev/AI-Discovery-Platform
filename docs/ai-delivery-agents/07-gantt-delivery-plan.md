@@ -107,7 +107,7 @@ gantt
 
 - `docs/architecture/product-ai-agents-architecture-review.md`;
 - `docs/architecture/product-ai-agents-target-architecture.md`;
-- `docs/architecture/ADR-002-product-ai-agents-target-architecture.md`;
+- `docs/architecture/ADR-003-product-ai-agents-target-architecture.md`;
 - `docs/backlog/product-ai-agents-architecture-decision-backlog.md`.
 
 ```mermaid
@@ -118,7 +118,7 @@ gantt
 
     section Architecture Decision
     Review Product AI Agents architecture                 :done, pa_review, 2026-05-22, 1d
-    ADR approval and scope decision                       :pa_adr, after pa_review, 3d
+    ADR-003 approval and scope decision                   :pa_adr, after pa_review, 3d
     StageProcessor contract design                        :pa_contract, after pa_adr, 4d
     Manual Trello card review                             :pa_trello, after pa_adr, 2d
 
@@ -139,3 +139,4 @@ Delivery impact:
 - Если ADR отклонён, блок остаётся decision record и не создаёт implementation scope.
 - Если ADR принят, `ARCH-PA-01`, `BE-02-05`, `BE-02-06` и `QA-PA-01` нужно включить в активный backlog.
 - Trello API не вызывался; создан только manual import package в Markdown.
+- Remediation 2026-05-22: конфликт ADR-нумерации устранён переносом Product AI Agents target architecture в `ADR-003`; сроки Gantt не менялись.

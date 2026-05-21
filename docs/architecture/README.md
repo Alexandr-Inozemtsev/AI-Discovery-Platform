@@ -8,6 +8,9 @@
 | [Целевая архитектура](target-architecture.md) | Верхнеуровневые компоненты и целевой контур платформы. | Target-state | `ai-solution-architect` | При изменении компонентов, интеграций или deployment assumptions. |
 | [ADR-001 AI/RAG/agent framework](ADR-001-agent-and-rag-framework-selection.md) | Решение по AI/RAG/framework strategy и ограничениям внешних frameworks. | Architecture decision | `ai-solution-architect` | При пересмотре framework strategy или добавлении внешнего orchestration framework. |
 | [ADR-002 target platform evolution](adr-002-target-platform-evolution.md) | Архитектурная эволюция платформы. | Architecture decision | `ai-solution-architect` | При изменении target architecture. |
+| [ADR-003 Product AI Agents target architecture](ADR-003-product-ai-agents-target-architecture.md) | Целевая гибридная модель Product AI Agents: Agent Runtime, stage processors, prompt registry, LLM Gateway. | Draft architecture decision | `ai-solution-architect` | При изменении Product AI Agents target model, BE-02-05/BE-02-06 или corporate wording. |
+| [Product AI Agents architecture review](product-ai-agents-architecture-review.md) | Экспертная оценка текущих Product AI Agents и альтернатив архитектуры. | Current-state review | `ai-solution-architect` | При пересмотре Product AI Agents или Agent Runtime roadmap. |
+| [Product AI Agents target architecture](product-ai-agents-target-architecture.md) | Target-state draft по гибридной модели Product AI Agents. | Target-state draft | `ai-solution-architect` | При изменении stage processor contract или prompt governance. |
 | [Agent Runtime Contract](agent-runtime-contract.md) | Контракт запуска product AI agents, result, errors, metadata. | Target-state | `ai-solution-architect`, `ai-backend-developer` | При изменении runtime contract или agent result shape. |
 | [Agent Runtime Roadmap](agent-runtime-roadmap.md) | План развития product Agent Runtime. | Draft | `ai-solution-architect` | При изменении backend runtime roadmap. |
 | [SimpleRetriever Contract](simple-retriever-contract.md) | Контракт retrieval без внешних RAG dependencies. | Target-state | `ai-llm-rag-engineer` | При изменении retrieval boundary, ranking или source trace. |
@@ -21,17 +24,17 @@
 
 - Для системного scope: [ТЗ целевого состояния](../system/tz-ai-discovery-platform-target.md).
 - Для текущего API: [Current OpenAPI contract](../api/openapi-contracts-current.md).
-- Для product Agent Runtime: [Agent Runtime Contract](agent-runtime-contract.md).
+- Для product Agent Runtime: [Agent Runtime Contract](agent-runtime-contract.md), [Product AI Agents architecture review](product-ai-agents-architecture-review.md), [ADR-003 Product AI Agents target architecture](ADR-003-product-ai-agents-target-architecture.md).
 - Для retrieval: [SimpleRetriever Contract](simple-retriever-contract.md) и [RAG/retrieval target design](../llm-rag/rag-and-retrieval-target-design.md).
 - Для delivery scope: [Trello backlog cards](../backlog/trello-cards.md) и [Gantt delivery plan](../ai-delivery-agents/07-gantt-delivery-plan.md).
 
 ## Архитектурные решения
 
-Главные решения зафиксированы в ADR. `ADR-001` ограничивает преждевременное подключение LangGraph, LlamaIndex и Haystack как foundation. Они остаются future adapters после стабилизации собственного runtime и SimpleRetriever boundary.
+Главные решения зафиксированы в ADR. `ADR-001` ограничивает преждевременное подключение LangGraph, LlamaIndex и Haystack как foundation. `ADR-002` сохраняет решение по target platform evolution. `ADR-003` фиксирует целевую модель Product AI Agents и устраняет конфликт нумерации по этому решению.
 
 ## Runtime и agents
 
-Product AI Agents живут в backend runtime продукта и не смешиваются с Global Codex Delivery Agents. Runtime-контур описан в [Agent Runtime Contract](agent-runtime-contract.md), roadmap - в [Agent Runtime Roadmap](agent-runtime-roadmap.md).
+Product AI Agents живут в backend runtime продукта и не смешиваются с Global Codex Delivery Agents. Runtime-контур описан в [Agent Runtime Contract](agent-runtime-contract.md), roadmap - в [Agent Runtime Roadmap](agent-runtime-roadmap.md), целевая модель - в [ADR-003](ADR-003-product-ai-agents-target-architecture.md).
 
 ## RAG / Retrieval
 
@@ -48,4 +51,3 @@ Delivery planning ведется через backlog, Trello package и Gantt. Э
 ## Management presentation assets
 
 Материалы для руководства находятся в [docs/presentations](../presentations/management-platform-overview.md). Figma Slides handoff описан в [figma-use-slides brief](../presentations/figma-use-slides-brief.md).
-
