@@ -98,3 +98,44 @@ gantt
 - UI design spec before frontend implementation.
 - Tests before release readiness.
 - Issue #75 зависит от context/RAG design, security controls и frontend Context screen spec.
+
+## Product AI Agents architecture decision impact
+
+Статус: draft. Этот блок отражает архитектурный impact review Product AI Agents от 2026-05-22. Mermaid Gantt ниже не означает подключение к внешнему Gantt-инструменту и не меняет автоматически сроки существующих задач.
+
+Связанные документы:
+
+- `docs/architecture/product-ai-agents-architecture-review.md`;
+- `docs/architecture/product-ai-agents-target-architecture.md`;
+- `docs/architecture/ADR-002-product-ai-agents-target-architecture.md`;
+- `docs/backlog/product-ai-agents-architecture-decision-backlog.md`.
+
+```mermaid
+gantt
+    title Product AI Agents Target Architecture Impact
+    dateFormat YYYY-MM-DD
+    axisFormat %d.%m
+
+    section Architecture Decision
+    Review Product AI Agents architecture                 :done, pa_review, 2026-05-22, 1d
+    ADR approval and scope decision                       :pa_adr, after pa_review, 3d
+    StageProcessor contract design                        :pa_contract, after pa_adr, 4d
+    Manual Trello card review                             :pa_trello, after pa_adr, 2d
+
+    section Runtime Hardening
+    BE-02-01 AgentResult unification                      :pa_be0201, after pa_adr, 5d
+    BE-02-02 Canonical generation flows                   :pa_be0202, after pa_be0201, 5d
+    StageDraftProcessor migration plan                    :pa_stage, after pa_be0202, 5d
+    SimpleRetriever evidence integration                  :pa_rag, after pa_contract, 6d
+
+    section QA and Corporate Readiness
+    Prompt regression and golden datasets                 :pa_qa, after pa_contract, 5d
+    Security and corporate wording review                 :pa_sec, after pa_adr, 4d
+    Go or no-go for implementation                        :milestone, pa_gate, after pa_stage, 0d
+```
+
+Delivery impact:
+
+- Если ADR отклонён, блок остаётся decision record и не создаёт implementation scope.
+- Если ADR принят, `ARCH-PA-01`, `BE-02-05`, `BE-02-06` и `QA-PA-01` нужно включить в активный backlog.
+- Trello API не вызывался; создан только manual import package в Markdown.
