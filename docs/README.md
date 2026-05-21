@@ -22,6 +22,7 @@
 - [Контракт Agent Runtime](architecture/agent-runtime-contract.md)
 - [Архитектурные схемы](architecture/diagrams/README.md)
 - [Текущий API contract](api/openapi-contracts-current.md)
+- [Backend error envelope](api/error-envelope.md)
 
 ## Backlog и roadmap
 

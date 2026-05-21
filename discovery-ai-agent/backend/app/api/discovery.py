@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agents.critic_agent import CriticAgent
 from app.agents.orchestrator import AgentOrchestrator
+from app.api.errors import api_error, llm_api_error
 from app.llm.factory import create_llm
 from app.models.llm_settings import LLMSettings
 from app.db.session import get_db
@@ -146,12 +147,12 @@ def _ensure_llm_ready(db: Session):
     status = _runtime_status(db)
     if status['llm']['ready_for_generation']:
         return
-    raise HTTPException(400, {
-        'ok': False,
-        'error': 'LLM_NOT_READY',
-        'human_message': 'LLM не настроена. Откройте Настройки → LLM настройки и проверьте подключение.',
-        'details': status['llm']
-    })
+    raise api_error(
+        400,
+        'LLM_NOT_READY',
+        'LLM не настроена. Откройте Настройки → LLM настройки и проверьте подключение.',
+        status['llm'],
+    )
 
 def _context_source_status(extraction_status: str) -> str:
     if extraction_status == 'completed':
@@ -200,36 +201,36 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)): retur
 @router.get('/projects/{project_id}', response_model=ProjectRead)
 def get_project(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     return p
 @router.patch('/projects/{project_id}', response_model=ProjectRead)
 def patch_project(project_id: str, payload: ProjectUpdate, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     return repo.update_project(db, p, **payload.model_dump(exclude_none=True))
 @router.delete('/projects/{project_id}')
 def remove_project(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     repo.delete_project(db, p); return {'ok': True}
 @router.get('/projects/{project_id}/artifacts', response_model=list[ArtifactRead])
 def get_artifacts(project_id: str, db: Session = Depends(get_db)): return repo.list_artifacts(db, project_id)
 @router.get('/projects/{project_id}/artifacts/{artifact_type}', response_model=ArtifactRead)
 def get_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
     a = repo.get_artifact(db, project_id, artifact_type)
-    if not a: raise HTTPException(404, 'Artifact not found')
+    if not a: raise api_error(404, 'ARTIFACT_NOT_FOUND')
     return a
 @router.put('/projects/{project_id}/artifacts/{artifact_type}', response_model=ArtifactRead)
 def put_artifact(project_id: str, artifact_type: ArtifactType, payload: ArtifactWrite, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     return repo.upsert_artifact(db, project_id, artifact_type, payload.content, payload.structured_content, payload.rich_content_json, payload.rendered_html)
 
 @router.post('/projects/{project_id}/context/sources/upload')
 async def upload_context_sources(project_id: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
     if not p:
-        raise HTTPException(404, 'Проект не найден')
+        raise api_error(404, 'PROJECT_NOT_FOUND')
     sources = []
     for upload in files:
         content = await upload.read()
@@ -314,7 +315,7 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
     if not p:
-        raise HTTPException(404, 'Проект не найден')
+        raise api_error(404, 'PROJECT_NOT_FOUND')
     existing = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     context_input = payload.get('context_input') or {}
     links = payload.get('links') or []
@@ -324,7 +325,7 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
     orchestrator = AgentOrchestrator(create_llm(db))
     agent = orchestrator.get_agent(ArtifactType.CONTEXT.value)
     if not agent or not hasattr(agent, 'analyze'):
-        raise HTTPException(500, 'ContextIngestionAgent не подключен в AgentOrchestrator')
+        raise api_error(500, 'INTERNAL_ERROR', 'ContextIngestionAgent не подключен в AgentOrchestrator.')
     prev_structured = existing.structured_content if existing and isinstance(existing.structured_content, dict) else {}
     previous_context = {
         'context_input': prev_structured.get('context_input') or {},
@@ -340,10 +341,10 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
             previous_context=previous_context
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise api_error(400, 'VALIDATION_ERROR', str(e))
     extracted = analysis.get('extracted_knowledge') or {}
     if not extracted:
-        raise HTTPException(400, 'LLM вернул некорректный JSON')
+        raise api_error(400, 'LLM_INVALID_JSON')
     source_trace = analysis.get('source_trace') or extracted.get('source_trace') or []
     coverage = analysis.get('coverage') or extracted.get('coverage') or {}
     readiness = analysis.get('readiness') or extracted.get('readiness') or {}
@@ -393,10 +394,10 @@ def analyze_context(project_id: str, payload: dict, db: Session = Depends(get_db
 def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session = Depends(get_db)):
     _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Проект не найден')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     orchestrator = AgentOrchestrator(create_llm(db))
     agent = orchestrator.get_agent(artifact_type.value)
-    if not agent: raise HTTPException(400, 'Генерация для этого типа артефакта не поддерживается')
+    if not agent: raise api_error(400, 'UNSUPPORTED_ARTIFACT_TYPE', details={'artifact_type': artifact_type.value})
     try:
         existing=_existing_artifacts_map(db, project_id)
         ctx={k: v['content'] for k, v in existing.items()}
@@ -409,7 +410,7 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
         content = agent.run(p, ctx)
     except Exception as e:
         if 'openrouter' in str(e).lower() or '401' in str(e) or 'timeout' in str(e).lower():
-            raise HTTPException(400, 'OpenRouter недоступен. Проверьте API key, модель и интернет-соединение.')
+            raise llm_api_error(e, stage=artifact_type.value, provider='openrouter', model='unknown')
         raise
     return repo.upsert_artifact(db, project_id, artifact_type, content, None)
 
@@ -417,7 +418,7 @@ def generate_artifact(project_id: str, artifact_type: ArtifactType, db: Session 
 def validate_project(project_id: str, db: Session = Depends(get_db)):
     _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Проект не найден')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     critic = CriticAgent(create_llm(db))
     content = critic.run(p, {k: v['content'] for k, v in _existing_artifacts_map(db, project_id).items()})
     return repo.upsert_artifact(db, project_id, ArtifactType.VALIDATION_REPORT, content, None)
@@ -459,10 +460,10 @@ def _default_problem_structured():
 def generate_problem(project_id: str, payload: dict | None = None, db: Session = Depends(get_db)):
     _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Проект не найден')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     if not context_art or not (context_art.structured_content or {}).get('context_input'):
-        raise HTTPException(400, 'Сначала заполните Контекст или загрузите источники знаний.')
+        raise api_error(400, 'VALIDATION_ERROR', 'Сначала заполните Контекст или загрузите источники знаний.')
     context_struct = context_art.structured_content or {}
     problem_handoff = context_struct.get('problem_handoff') or {}
     source_trace = context_struct.get('source_trace') or []
@@ -564,7 +565,7 @@ def ask_problem(project_id: str, payload: dict, db: Session = Depends(get_db)):
 @router.post('/projects/{project_id}/problem/apply-patch')
 def apply_problem_patch(project_id: str, payload: dict, db: Session = Depends(get_db)):
     art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
-    if not art: raise HTTPException(404, 'Артефакт проблемы не найден')
+    if not art: raise api_error(404, 'ARTIFACT_NOT_FOUND', 'Артефакт проблемы не найден.')
     sc = art.structured_content or _default_problem_structured()
     patch = payload.get('patch') or {}
     for k,v in patch.items():
@@ -578,10 +579,10 @@ def apply_problem_patch(project_id: str, payload: dict, db: Session = Depends(ge
 def generate_goal(project_id: str, db: Session = Depends(get_db)):
     _ensure_llm_ready(db)
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Проект не найден')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     if not context_art or not (context_art.content or (context_art.structured_content or {}).get('context_input')):
-        raise HTTPException(400, 'Сначала заполните Контекст')
+        raise api_error(400, 'VALIDATION_ERROR', 'Сначала заполните Контекст.')
     problem_art = repo.get_artifact(db, project_id, ArtifactType.PROBLEM)
     goal_art = repo.get_artifact(db, project_id, ArtifactType.GOAL)
     prev = (goal_art.structured_content or _default_goal_structured()) if goal_art else _default_goal_structured()
@@ -603,14 +604,18 @@ def generate_goal(project_id: str, db: Session = Depends(get_db)):
     try:
         raw = llm.generate(prompt)
     except Exception as e:
-        raise HTTPException(400, _llm_error('GOAL', getattr(llm,'provider','unknown'), getattr(llm,'model','unknown'), 'Ошибка вызова LLM', str(e)))
+        raise llm_api_error(e, stage='GOAL', provider=getattr(llm,'provider','unknown'), model=getattr(llm,'model','unknown'))
     data = _json_from_llm_response(raw)
     if not data:
         prev_hist = merged.get('aiHistory') if 'merged' in locals() else []
         merged = {**_default_goal_structured(), **prev}
         merged['aiHistory'] = [*(prev_hist or []), {'createdAt': str(time.time()), 'raw_response': raw}][-30:]
         repo.upsert_artifact(db, project_id, ArtifactType.GOAL, _goal_to_text(merged), structured_content=merged)
-        raise HTTPException(400, _llm_error('GOAL', getattr(llm,'provider','unknown'), getattr(llm,'model','unknown'), 'AI вернул неструктурированный ответ', raw[:1200]))
+        raise api_error(
+            400,
+            'LLM_INVALID_JSON',
+            details={'stage': 'GOAL', 'provider': getattr(llm,'provider','unknown'), 'model': getattr(llm,'model','unknown'), 'provider_error': raw[:1200]},
+        )
     merged = {**_default_goal_structured(), **prev}
     merged['aiQuestions'] = data.get('questions') or []
     merged['aiContradictions'] = data.get('contradictions') or []
@@ -629,7 +634,7 @@ def stage_questions(project_id: str, artifact_type: ArtifactType, db: Session = 
     _ensure_llm_ready(db)
     context_art = repo.get_artifact(db, project_id, ArtifactType.CONTEXT)
     if not context_art:
-        raise HTTPException(400, 'Сначала заполните Контекст')
+        raise api_error(400, 'VALIDATION_ERROR', 'Сначала заполните Контекст.')
     art = repo.get_artifact(db, project_id, artifact_type)
     sc = (art.structured_content if art else {}) or {}
     prompt = f"Сформируй 3-5 дополнительных уточняющих вопросов на русском для этапа {artifact_type.value} на основе контекста. Верни JSON: {{questions:[]}}. Контекст: {json.dumps(context_art.structured_content or context_art.content, ensure_ascii=False)}"
@@ -659,7 +664,7 @@ def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: S
     msg = payload.get('message','').strip()
     qid = payload.get('question_id')
     if not msg:
-        raise HTTPException(400, 'Введите ответ для AI')
+        raise api_error(400, 'VALIDATION_ERROR', 'Введите ответ для AI.')
     questions = sc.get('ai_questions') or []
     q_text = ''
     for q in questions:
@@ -680,7 +685,7 @@ def stage_ask(project_id: str, artifact_type: ArtifactType, payload: dict, db: S
 @router.post('/projects/{project_id}/stage/{artifact_type}/apply-patch')
 def stage_apply_patch(project_id: str, artifact_type: ArtifactType, payload: dict, db: Session = Depends(get_db)):
     art = repo.get_artifact(db, project_id, artifact_type)
-    if not art: raise HTTPException(404, 'Артефакт не найден')
+    if not art: raise api_error(404, 'ARTIFACT_NOT_FOUND')
     sc = (art.structured_content or {})
     patch = payload.get('patch') or sc.get('ai_patch') or {}
     if isinstance(patch, dict):
@@ -691,7 +696,7 @@ def stage_apply_patch(project_id: str, artifact_type: ArtifactType, payload: dic
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
     art = {a.artifact_type.value: a for a in repo.list_artifacts(db, project_id)}
     sections=[]; req_total=0; req_done=0; missing=[]
     for t,(title,req) in SECTION_META.items():
@@ -715,8 +720,11 @@ def completion(project_id: str, db: Session = Depends(get_db)):
 @router.get('/projects/{project_id}/export/docx')
 def export_docx(project_id: str, db: Session = Depends(get_db)):
     p = repo.get_project(db, project_id)
-    if not p: raise HTTPException(404, 'Project not found')
-    bio = build_docx(p, repo.list_artifacts(db, project_id))
+    if not p: raise api_error(404, 'PROJECT_NOT_FOUND')
+    try:
+        bio = build_docx(p, repo.list_artifacts(db, project_id))
+    except Exception:
+        raise api_error(500, 'DOCX_EXPORT_FAILED')
     return StreamingResponse(bio, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', headers={'Content-Disposition': f'attachment; filename=BT_{project_id}.docx'})
 
 

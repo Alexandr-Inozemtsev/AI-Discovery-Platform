@@ -158,7 +158,11 @@ Indexing status в `CONTEXT.structured_content`:
 
 ## 6. Текущий error contract
 
-Фактическая ситуация неоднородна.
+BE-01-02 ввела единый backend error envelope для основного MVP scope: `HTTPException`, validation errors, `PROJECT_NOT_FOUND`, `ARTIFACT_NOT_FOUND`, `LLM_NOT_READY`, unsupported artifact generation, LLM/provider errors, invalid LLM JSON, DOCX export и unexpected backend errors.
+
+Актуальный формат описан в [Backend error envelope](error-envelope.md).
+
+Исторически до BE-01-02 фактическая ситуация была неоднородна:
 
 Строковый `detail`:
 
@@ -192,16 +196,24 @@ Success payload с `ok/error/details`:
 - Upload и context/stage errors частично на русском.
 - CRUD project/artifact errors частично на английском.
 
-Где нужно унифицировать:
+Что закрыто BE-01-02:
 
-- Все `HTTPException` должны возвращать единый error envelope.
-- `404`, `400`, provider errors, validation errors, unsupported generation и extraction errors должны иметь стабильный `error_code`.
-- `last_error` provider должен быть безопасно обрезан и очищен от secrets/private endpoint fragments.
-- Frontend `parseApiError` уже ожидает `human_message`, `detail.human_message`, `detail.error`, `error`, но это fallback logic, а не стабильный contract.
+- централизован envelope `{ok,false,error_code,human_message,details,trace_id}`;
+- `404` для project/artifact переведен на `PROJECT_NOT_FOUND` и `ARTIFACT_NOT_FOUND`;
+- `422` FastAPI validation переводится в `VALIDATION_ERROR`;
+- `LLM_NOT_READY` использует `error_code`;
+- LLM/provider errors получают стабильные codes и sanitization;
+- stack traces и raw unhandled exceptions не отдаются frontend.
 
-## 7. Целевой error envelope для следующей задачи BE-01-02
+Известные gaps после BE-01-02:
 
-Рекомендуемый формат для следующей задачи. В рамках BE-01-01 код не реализуется.
+- Upload file-level errors пока остаются внутри success response `{ok:true, sources:[...]}` для совместимости текущего UI.
+- Часть request body все еще принимает `dict` без Pydantic schemas; это scope `BE-01-04`.
+- `last_error` в LLM settings response остается диагностическим полем текущего settings contract и требует дальнейшего hardening в `BE-06-01`.
+
+## 7. Error envelope после BE-01-02
+
+Реализованный базовый формат:
 
 ```json
 {
@@ -213,7 +225,7 @@ Success payload с `ok/error/details`:
 }
 ```
 
-Рекомендации:
+Правила:
 
 - `error_code` должен быть стабильным машинным кодом: `PROJECT_NOT_FOUND`, `ARTIFACT_NOT_FOUND`, `LLM_NOT_READY`, `UNSUPPORTED_ARTIFACT_TYPE`, `VALIDATION_ERROR`, `CONTEXT_EXTRACTION_FAILED`.
 - `human_message` всегда на русском языке.
@@ -237,7 +249,7 @@ Success payload с `ok/error/details`:
 
 ## 9. Связь со следующими backlog-задачами
 
-- `BE-01-02` error envelope: использовать разделы 6-7 как baseline для унификации ошибок.
+- `BE-01-02` error envelope: выполнено; актуальный контракт см. [Backend error envelope](error-envelope.md).
 - `BE-01-03` decomposition routers: таблица endpoint-ов задает зоны для routers: projects, artifacts, context, generation, stage assistance, export, settings/runtime.
 - `BE-01-04` Pydantic validation: endpoint-ы с `dict` body перечислены как кандидаты на typed schemas.
 - `BE-02-01` AgentResult contract: generic и stage-specific generation response shapes перечислены как текущие расхождения.
@@ -256,4 +268,3 @@ Success payload с `ok/error/details`:
 - [x] Явно указано, что это current/factual contract, а не целевая реализация.
 - [x] Product AI Agents и Global Codex Delivery Agents не смешаны.
 - [x] Production-код не изменялся.
-

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.discovery import router as discovery_router
+from app.api.error_handlers import install_error_handlers
 from app.db.base import Base
 from sqlalchemy import text
 
@@ -12,6 +13,7 @@ from app.models.llm_settings import LLMSettings
 from app.db.session import SessionLocal
 
 app = FastAPI(title="AI Discovery Agent API")
+install_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,

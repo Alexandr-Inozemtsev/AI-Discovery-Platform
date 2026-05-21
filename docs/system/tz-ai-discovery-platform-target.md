@@ -37,7 +37,7 @@ AI Discovery Platform предназначена для подготовки, с
 - авторизация и ролевая модель в API не реализованы;
 - Trello-интеграция не реализована в коде, есть поле `jira_epic_url`;
 - аудит изменений как отдельная сущность отсутствует;
-- единый error envelope реализован частично: часть endpoint возвращает строковый `detail`, часть возвращает объект;
+- единый error envelope введен для основного MVP scope в рамках `BE-01-02`; остаются follow-up gaps по typed request schemas, upload file-level statuses и LLM settings hardening;
 - Alembic migration `0001` не полностью отражает текущие ORM-поля `structured_content`, `rich_content_json`, `rendered_html`, которые добавляются на startup через schema patch;
 - `source_trace`, `coverage`, `readiness`, `problem_handoff` существуют для анализа контекста, но не унифицированы для всех AI-артефактов.
 

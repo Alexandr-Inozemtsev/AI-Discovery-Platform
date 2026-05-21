@@ -49,6 +49,10 @@
 
 ### BE-01-02. Ввести единый формат backend ошибок
 
+**Статус:** Done
+
+**Документ:** `docs/api/error-envelope.md`
+
 **Описание:** Сейчас ошибки возвращаются как строки `HTTPException`, dict payloads и разные поля LLM ошибок. Нужно унифицировать формат ошибок для validation, not found, LLM not ready, LLM provider errors, extraction errors и backend errors.
 
 **Приоритет:** P0
