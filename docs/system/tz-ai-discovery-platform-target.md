@@ -648,6 +648,8 @@ Frontend должен использовать только публичный A
 
 ## 20. Handoff
 
+> Уточнение слоев: Product AI Agents и Global Codex Delivery Agents - разные слои. Product AI Agents работают внутри backend/runtime AI Discovery Platform для пользователей продукта. Handoff ниже относится к глобальным Codex delivery agents, которые помогают разрабатывать платформу через Codex.
+
 От: `ai-system-analyst`  
 Кому: `ai-solution-architect`, `ai-backend-developer`, `ai-frontend-developer`, `ai-database-engineer`, `ai-llm-rag-engineer`, `ai-security-reviewer`, `ai-qa-engineer`, `ai-test-automation-engineer`, `ai-trello-analyst`
 

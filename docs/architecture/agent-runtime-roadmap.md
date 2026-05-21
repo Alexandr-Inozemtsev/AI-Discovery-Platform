@@ -4,6 +4,8 @@
 
 Статус: draft
 
+> Примечание: этот roadmap относится к product Agent Runtime внутри AI Discovery Platform. Он не описывает глобальных Codex delivery agents, которые оформлены отдельно в `docs/ai-delivery-agents/`.
+
 ## Цель
 
 Постепенно превратить текущий `AgentOrchestrator` и runtime-типы в управляемый `Agent Runtime`, не переписывая production-код на внешний framework и не ломая существующие React/FastAPI сценарии.
@@ -219,4 +221,3 @@ Definition of Done:
 - Security reviewer: проверить secrets, prompts, outbound data и dependencies.
 - QA engineer: подготовить regression cases для fallback, trace и adapter-off режима.
 - DevOps engineer: подготовить feature flags и rollback runbook.
-
