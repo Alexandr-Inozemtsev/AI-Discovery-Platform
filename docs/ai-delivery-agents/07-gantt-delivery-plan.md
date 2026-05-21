@@ -34,3 +34,6 @@ gantt
 - Если меняется Trello/backlog scope, `ai-trello-analyst` синхронизирует Markdown package.
 - Если план используется только как Mermaid-файл, нельзя утверждать, что он подключен к внешнему Gantt-инструменту.
 
+## Delivery notes
+
+- `BE-01-01` относится к блоку `Backend stabilization`; даты Gantt не изменялись, так как задача фиксирует текущий API contract без изменения сроков.

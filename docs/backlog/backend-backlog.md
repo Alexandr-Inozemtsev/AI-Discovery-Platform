@@ -26,6 +26,10 @@
 
 ### BE-01-01. Описать и зафиксировать OpenAPI contracts для текущих endpoint-ов
 
+**Статус:** Done
+
+**Документ:** `docs/api/openapi-contracts-current.md`
+
 **Описание:** Зафиксировать контракт текущих endpoint-ов: `/health`, `/api/runtime/status`, `/api/projects`, `/api/projects/{project_id}`, `/api/projects/{project_id}/artifacts`, `/api/projects/{project_id}/context/sources/upload`, `/api/projects/{project_id}/context/analyze`, `/api/projects/{project_id}/generate/{artifact_type}`, `/api/projects/{project_id}/validate`, `/api/projects/{project_id}/problem/*`, `/api/projects/{project_id}/goal/generate`, `/api/projects/{project_id}/stage/{artifact_type}/*`, `/api/projects/{project_id}/completion`, `/api/projects/{project_id}/export/docx`, `/api/settings/llm`.
 
 **Приоритет:** P0
