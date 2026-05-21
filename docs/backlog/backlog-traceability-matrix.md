@@ -1,0 +1,35 @@
+# Backlog traceability matrix
+
+Дата: 2026-05-21  
+Статус: draft для delivery planning и презентации руководству.
+
+| Epic / Issue | Business value | Architecture document | Design document | Implementation area | Dependencies | Status | Priority | Suggested delivery phase |
+|---|---|---|---|---|---|---|---|---|
+| ЭПИК-01 Product foundation | Единый управляемый Discovery workflow. | [ТЗ](../system/tz-ai-discovery-platform-target.md), [C4 Context](../architecture/diagrams/01-c4-context.md) | [Screen inventory](../design/screen-inventory.md) | Product/process/docs | Нет | Planned | P0 | Discovery foundation |
+| ЭПИК-02 Context sources and indexing | Надежный входной контекст и traceability. | [Context/RAG](../architecture/diagrams/04-context-ingestion-and-rag.md), [RAG design](../llm-rag/rag-and-retrieval-target-design.md) | [Context screen spec](../design/context-screen-spec.md) | Backend context, frontend Context | ЭПИК-01 | Planned | P0 | Context/RAG |
+| ЭПИК-03 Agent Runtime | Управляемая генерация и fallback. | [Agent Runtime Contract](../architecture/agent-runtime-contract.md), [Runtime flow](../architecture/diagrams/03-agent-runtime-flow.md) | [Screen inventory](../design/screen-inventory.md) | Backend runtime | ЭПИК-01 | Planned | P0 | Architecture stabilization |
+| ЭПИК-04 SimpleRetriever grounding | Генерация с опорой на источники. | [SimpleRetriever](../architecture/simple-retriever-contract.md), [RAG design](../llm-rag/rag-and-retrieval-target-design.md) | [Context screen spec](../design/context-screen-spec.md) | Retriever/RAG | ЭПИК-02, ЭПИК-03 | Planned | P0 | Architecture stabilization |
+| ЭПИК-05 Problem Goal Business Effect | Переход от контекста к бизнес-артефактам. | [Artifact lifecycle](../architecture/diagrams/05-discovery-artifact-lifecycle.md) | [Screen inventory](../design/screen-inventory.md) | Product agents, frontend stages | ЭПИК-02, ЭПИК-04 | Planned | P0 | Discovery stages |
+| ЭПИК-06 AS IS TO BE Use Cases | Описание текущего и целевого процесса. | [Artifact lifecycle](../architecture/diagrams/05-discovery-artifact-lifecycle.md) | [Screen inventory](../design/screen-inventory.md) | Product agents, artifact storage | ЭПИК-05 | Planned | P1 | Discovery stages |
+| ЭПИК-07 Requirements | Формализация требований. | [ТЗ](../system/tz-ai-discovery-platform-target.md) | [Screen inventory](../design/screen-inventory.md) | Product agents, backend/frontend | ЭПИК-05, ЭПИК-06 | Planned | P0 | Requirements |
+| ЭПИК-08 Final BT DOCX export | Управленческий результат в DOCX. | [Artifact lifecycle](../architecture/diagrams/05-discovery-artifact-lifecycle.md) | [Presentation style](../design/management-presentation-visual-style.md) | DOCX export service | ЭПИК-07 | Planned | P1 | Export |
+| ЭПИК-09 LLM provider corporate mode | Корпоративная готовность LLM. | [Deployment](../architecture/diagrams/07-deployment-local-and-corporate.md), [ADR-001](../architecture/ADR-001-agent-and-rag-framework-selection.md) | [Screen inventory](../design/screen-inventory.md) | LLM settings/gateway | Security review | Planned | P0 | Corporate readiness |
+| ЭПИК-10 UI UX and UI Kit | Стабильный пользовательский workspace. | [C4 Container](../architecture/diagrams/02-c4-container.md) | [Design system](../design/design-system.md), [Screen inventory](../design/screen-inventory.md) | Frontend | ТЗ, API contract | Planned | P0 | UI/UX |
+| ЭПИК-11 Data versioning audit | Версии, audit и контроль изменений. | [Artifact lifecycle](../architecture/diagrams/05-discovery-artifact-lifecycle.md) | [Screen inventory](../design/screen-inventory.md) | DB/backend | Backend contract | Planned | P0 | Data hardening |
+| ЭПИК-12 Security privacy prompt injection | Снижение рисков corporate pilot. | [Link processing](../architecture/diagrams/06-link-processing-corporate-rag-and-parser.md), [Deployment](../architecture/diagrams/07-deployment-local-and-corporate.md) | [Context screen spec](../design/context-screen-spec.md) | Security/backend/LLM | ЭПИК-09, Issue #75 | Planned | P0 | Security |
+| ЭПИК-13 Metrics AI quality monitoring | Прозрачность качества AI. | [Agent Runtime Contract](../architecture/agent-runtime-contract.md) | [Screen inventory](../design/screen-inventory.md) | Metrics/backend | ЭПИК-03 | Planned | P1 | Observability |
+| ЭПИК-14 DevOps environments CI CD | Повторяемый запуск и deployment. | [Deployment](../architecture/diagrams/07-deployment-local-and-corporate.md) | N/A | DevOps | Security/env decisions | Planned | P1 | DevOps |
+| ЭПИК-15 QA testing validation | Контроль качества перед pilot. | [Current API contract](../api/openapi-contracts-current.md) | [Screen inventory](../design/screen-inventory.md) | QA/tests | Backend/frontend stabilization | Planned | P0 | QA |
+| ЭПИК-16 Documentation user instructions | Передача знаний команде и пользователям. | [Architecture README](../architecture/README.md) | [Design README](../design/README.md) | Docs | Все ключевые epics | In progress | P1 | Documentation |
+| ЭПИК-17 Trello delivery operating model | Управляемый delivery backlog. | [Gantt](../ai-delivery-agents/07-gantt-delivery-plan.md) | N/A | Delivery docs | Backlog scope | In progress | P1 | Delivery management |
+| ЭПИК-18 Future RAG adapters | Расширяемость retrieval. | [ADR-001](../architecture/ADR-001-agent-and-rag-framework-selection.md), [RAG design](../llm-rag/rag-and-retrieval-target-design.md) | N/A | RAG adapters | SimpleRetriever stabilized | Future | P2 | Future adapters |
+| ЭПИК-19 LangGraph workflow adapter | Потенциальная цепочка workflows. | [ADR-001](../architecture/ADR-001-agent-and-rag-framework-selection.md) | N/A | Agent workflow adapter | Runtime stabilized | Future | P3 | Future workflow |
+| ЭПИК-20 Commercial packaging monetization | Готовность к упаковке и продаже. | [C4 Context](../architecture/diagrams/01-c4-context.md) | [Presentation style](../design/management-presentation-visual-style.md) | Packaging/docs | Pilot readiness | Future | P2 | Commercialization |
+| Issue #75 Links via Corporate RAG and Universal Parser | Подключение ссылок и корпоративного знания к Context stage. | [Link processing](../architecture/diagrams/06-link-processing-corporate-rag-and-parser.md), [RAG design](../llm-rag/rag-and-retrieval-target-design.md) | [Context screen spec](../design/context-screen-spec.md) | Backend context/RAG, security, frontend Context | ЭПИК-02, ЭПИК-04, ЭПИК-12 | New | P0 | Context/RAG hardening |
+
+## Связанные planning artifacts
+
+- [Trello cards](trello-cards.md)
+- [Gantt delivery plan](../ai-delivery-agents/07-gantt-delivery-plan.md)
+- [Management presentation source](../presentations/management-platform-overview.md)
+
