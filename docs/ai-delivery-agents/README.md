@@ -22,8 +22,16 @@
 - `agents/` - профили отдельных глобальных Codex-агентов.
 - `prompt-packs/` - готовые prompt packs для типовых работ.
 - `templates/` - шаблоны задач, handoff, review и Trello-карточек.
+- `codex-local-install/` - install package для локальных TOML-профилей Codex.
+
+## Локальная установка Codex-агентов
+
+Локальные TOML-шаблоны и инструкции установки находятся в `docs/ai-delivery-agents/codex-local-install/README.md`.
+
+Package предназначен для ручной локальной установки в `C:\Users\alexp\.codex\agents`. Он не меняет production-код, не устанавливает agents в GitHub и не подключает глобальных Codex delivery agents как backend runtime-сервисы продукта.
+
+TOML-формат может потребовать адаптации под фактическую версию Codex CLI.
 
 ## Правило разделения
 
 Product AI Agents создаются для пользователей продукта и живут в runtime приложения. Global Codex Delivery Agents используются владельцем проекта для разработки самой платформы. Любой документ или задача должны явно указывать, к какому слою относятся агенты.
-

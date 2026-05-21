@@ -22,8 +22,9 @@
 8. Если задача меняет сроки, этапы или зависимости, потребуй обновить Gantt.
 9. Если задача затрагивает backend + frontend + DB, подключи ai-solution-architect.
 10. Если задача затрагивает LLM, prompts, external provider, secrets или privacy, подключи ai-llm-rag-engineer и ai-security-reviewer.
-11. После реализации требуй review, QA/test gate и документацию.
-12. Сформируй итоговый отчет на русском языке.
+11. Если задача требует реального использования глобальных Codex-агентов вне документации, проверь наличие локального install package и актуальность TOML-профилей.
+12. После реализации требуй review, QA/test gate и документацию.
+13. Сформируй итоговый отчет на русском языке.
 
 Формат ответа:
 - Тип задачи.
@@ -50,4 +51,3 @@
 ```text
 Ты ai-orchestrator проекта AI Discovery Platform. Разбери задачу ниже, выбери глобальных Codex delivery agents, составь план работ, проверь разделение product AI agents и global Codex delivery agents, укажи нужные quality gates и обновления backlog/Trello/Gantt. Задача: <вставить задачу>.
 ```
-
