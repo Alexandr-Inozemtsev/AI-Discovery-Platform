@@ -2,16 +2,20 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agents.critic_agent import CriticAgent
+from app.agents.discovery_chat_orchestrator import DiscoveryChatOrchestrator
 from app.agents.orchestrator import AgentOrchestrator
 from app.api.errors import api_error, llm_api_error
 from app.llm.factory import create_llm
 from app.models.llm_settings import LLMSettings
 from app.db.session import get_db
 from app.models.discovery import ArtifactType
+from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as repo
+from app.schemas.assistant import AssistantApplyPatchRequest, AssistantChatRequest
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.docx_export_service import build_docx
 from app.services.content_extraction import extract_text_from_upload
+from app.services.apply_patch_service import ApplyPatchService
 from fastapi.responses import StreamingResponse
 import json
 from urllib import request, error
@@ -692,6 +696,189 @@ def stage_apply_patch(project_id: str, artifact_type: ArtifactType, payload: dic
         sc.update(patch)
     saved = repo.upsert_artifact(db, project_id, artifact_type, art.content, structured_content=sc, rich_content_json=art.rich_content_json, rendered_html=art.rendered_html)
     return {'ok': True, 'structured_content': saved.structured_content}
+
+
+def _serialize_assistant_session(session) -> dict:
+    return {
+        'id': session.id,
+        'project_id': session.project_id,
+        'title': session.title,
+        'status': session.status,
+        'created_at': session.created_at,
+        'updated_at': session.updated_at,
+    }
+
+
+def _serialize_assistant_message(message) -> dict:
+    return {
+        'id': message.id,
+        'project_id': message.project_id,
+        'session_id': message.session_id,
+        'role': message.role,
+        'content': message.content,
+        'payload': message.payload,
+        'created_at': message.created_at,
+    }
+
+
+def _serialize_assistant_action(action) -> dict:
+    return {
+        'id': action.id,
+        'project_id': action.project_id,
+        'session_id': action.session_id,
+        'message_id': action.message_id,
+        'action_type': action.action_type,
+        'target_artifact_type': action.target_artifact_type,
+        'status': action.status,
+        'proposed_patch': action.proposed_patch or {},
+        'preview': action.preview or {},
+        'result': action.result or {},
+        'metadata': action.action_metadata or {},
+        'created_at': action.created_at,
+        'updated_at': action.updated_at,
+    }
+
+
+def _serialize_assistant_artifact(artifact) -> dict:
+    return {
+        'id': artifact.id,
+        'project_id': artifact.project_id,
+        'artifact_type': artifact.artifact_type,
+        'content': artifact.content,
+        'structured_content': artifact.structured_content,
+        'version': artifact.version,
+        'created_at': artifact.created_at,
+        'updated_at': artifact.updated_at,
+    }
+
+
+@router.post('/projects/{project_id}/assistant/chat')
+def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session = Depends(get_db)):
+    project = repo.get_project(db, project_id)
+    if not project:
+        raise api_error(404, 'PROJECT_NOT_FOUND')
+    session = assistant_repo.get_session(db, project_id, payload.session_id) if payload.session_id else None
+    if payload.session_id and not session:
+        raise api_error(404, 'ARTIFACT_NOT_FOUND', 'Сессия AI-чата не найдена.')
+    if not session:
+        session = assistant_repo.create_session(db, project_id, title='AI Discovery Chat')
+
+    user_message = assistant_repo.add_message(
+        db,
+        project_id=project_id,
+        session_id=session.id,
+        role='user',
+        content=payload.message,
+        payload={'artifact_type': payload.artifact_type.value if payload.artifact_type else None},
+    )
+    orchestrator = DiscoveryChatOrchestrator()
+    orchestration = orchestrator.handle_message(
+        project=project,
+        message=payload.message,
+        artifact_type=payload.artifact_type,
+        context=payload.context,
+    )
+    result = orchestration['result']
+    intent = orchestration['intent']
+    assistant_message = assistant_repo.add_message(
+        db,
+        project_id=project_id,
+        session_id=session.id,
+        role='assistant',
+        content=result.human_message,
+        payload={
+            'intent': intent,
+            'preview': result.preview,
+            'warnings': result.warnings,
+            'errors': result.errors,
+        },
+    )
+    assistant_repo.add_tool_run(
+        db,
+        project_id=project_id,
+        session_id=session.id,
+        action_id=None,
+        tool_name='intent_router.v1',
+        status='success' if result.ok else 'failed',
+        input_json={'message': payload.message, 'artifact_type': payload.artifact_type.value if payload.artifact_type else None},
+        output_json={'intent': intent},
+    )
+
+    action = None
+    if result.proposed_patch:
+        action = assistant_repo.add_action(
+            db,
+            project_id=project_id,
+            session_id=session.id,
+            message_id=assistant_message.id,
+            action_type='proposed_patch',
+            target_artifact_type=result.artifact_type,
+            proposed_patch=result.proposed_patch,
+            preview=result.preview,
+            status='proposed',
+            action_metadata=result.metadata,
+        )
+        assistant_repo.add_tool_run(
+            db,
+            project_id=project_id,
+            session_id=session.id,
+            action_id=action.id,
+            tool_name='patch.preview',
+            status='success',
+            input_json={'proposed_patch': result.proposed_patch},
+            output_json={'preview': result.preview},
+        )
+
+    return {
+        'ok': result.ok,
+        'session_id': session.id,
+        'user_message': _serialize_assistant_message(user_message),
+        'assistant_message': _serialize_assistant_message(assistant_message),
+        'intent': intent,
+        'action': _serialize_assistant_action(action) if action else None,
+        'preview': result.preview,
+        'warnings': result.warnings,
+        'errors': result.errors,
+    }
+
+
+@router.get('/projects/{project_id}/assistant/sessions')
+def get_assistant_sessions(project_id: str, db: Session = Depends(get_db)):
+    project = repo.get_project(db, project_id)
+    if not project:
+        raise api_error(404, 'PROJECT_NOT_FOUND')
+    sessions = assistant_repo.list_sessions(db, project_id)
+    return {'ok': True, 'sessions': [_serialize_assistant_session(session) for session in sessions]}
+
+
+@router.get('/projects/{project_id}/assistant/sessions/{session_id}/messages')
+def get_assistant_session_messages(project_id: str, session_id: str, db: Session = Depends(get_db)):
+    project = repo.get_project(db, project_id)
+    if not project:
+        raise api_error(404, 'PROJECT_NOT_FOUND')
+    session = assistant_repo.get_session(db, project_id, session_id)
+    if not session:
+        raise api_error(404, 'ARTIFACT_NOT_FOUND', 'Сессия AI-чата не найдена.')
+    messages = assistant_repo.list_messages(db, project_id, session_id)
+    return {'ok': True, 'messages': [_serialize_assistant_message(message) for message in messages]}
+
+
+@router.post('/projects/{project_id}/assistant/apply-patch')
+def assistant_apply_patch(project_id: str, payload: AssistantApplyPatchRequest, db: Session = Depends(get_db)):
+    project = repo.get_project(db, project_id)
+    if not project:
+        raise api_error(404, 'PROJECT_NOT_FOUND')
+    result = ApplyPatchService().apply_action_patch(
+        db,
+        project_id=project_id,
+        session_id=payload.session_id,
+        action_id=payload.action_id,
+    )
+    return {
+        'ok': True,
+        'artifact': _serialize_assistant_artifact(result['artifact']),
+        'action': _serialize_assistant_action(result['action']),
+    }
 
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):
