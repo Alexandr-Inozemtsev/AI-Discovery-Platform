@@ -140,3 +140,43 @@ Delivery impact:
 - Если ADR принят, `ARCH-PA-01`, `BE-02-05`, `BE-02-06` и `QA-PA-01` нужно включить в активный backlog.
 - Trello API не вызывался; создан только manual import package в Markdown.
 - Remediation 2026-05-22: конфликт ADR-нумерации устранён переносом Product AI Agents target architecture в `ADR-003`; сроки Gantt не менялись.
+
+## Chat-first architecture impact
+
+Статус: Phase 1 done, Phase 2 ready for development. Этот блок отражает переход к AI Discovery Chat как единой точке входа без замены FastAPI/React runtime.
+
+Связанные документы:
+
+- `docs/architecture/ADR-004-ai-discovery-chat-architecture.md`;
+- `docs/architecture/chat-orchestrator-contract.md`;
+- `docs/architecture/ADR-003-product-ai-agents-target-architecture.md`;
+- `docs/architecture/agent-runtime-contract.md`;
+- `docs/security/security-requirements.md`;
+- `docs/backlog/product-ai-agents-architecture-decision-backlog.md`.
+
+```mermaid
+gantt
+    title AI Discovery Chat Phase 1-2
+    dateFormat YYYY-MM-DD
+    axisFormat %d.%m
+
+    section Phase 1 Architecture and Contracts
+    ARCH-CHAT-01 ADR-004 AI Discovery Chat Architecture       :done, chat_adr, 2026-07-08, 1d
+    ARCH-CHAT-02 ADR-003 and Chat Orchestrator linkage        :done, chat_link, 2026-07-08, 1d
+    BE-RUNTIME-01 StageProcessorRequest and Result            :done, chat_runtime, 2026-07-08, 1d
+    SEC-CHAT-01 ToolPolicy                                    :done, chat_policy, 2026-07-08, 1d
+
+    section Phase 2 Implementation
+    Chat Orchestrator backend service                         :chat_be, after chat_policy, 4d
+    Chat endpoint contract and API tests                      :chat_api, after chat_be, 3d
+    Patch preview and apply service                           :chat_patch, after chat_api, 4d
+    React AI Discovery Chat shell                             :chat_fe, after chat_api, 5d
+    Chat workflow regression                                  :chat_qa, after chat_patch, 3d
+```
+
+Delivery impact:
+
+- Phase 2 может начинаться после acceptance Phase 1 docs/contracts.
+- Существующие endpoint paths остаются совместимыми.
+- Формы этапов Discovery остаются structured state артефактов и fallback UI.
+- Trello API не вызывался; создан только Markdown package.

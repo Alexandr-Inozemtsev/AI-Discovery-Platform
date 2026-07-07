@@ -15,7 +15,85 @@ Trello board: https://trello.com/b/AKdFcJsw/aidiscoveryplatform
 - отдельный `CriticAgent` / `ValidationProcessor`;
 - единый Agent Runtime, Prompt Registry, LLM Gateway и SimpleRetriever.
 
+Phase 1 chat-first update от 2026-07-08 добавляет [ADR-004 AI Discovery Chat Architecture](../architecture/ADR-004-ai-discovery-chat-architecture.md): AI Discovery Chat становится единой точкой входа в workflow, а формы этапов остаются structured state артефактов. Запись в `discovery_artifacts` разрешена только через `proposed_patch -> preview -> apply`.
+
 ## Backlog items
+
+### ARCH-CHAT-01. ADR-004 AI Discovery Chat Architecture
+
+Список Trello: `03 Architecture / ADR`  
+Labels: `Архитектура`, `Chat UX`, `Agent Runtime`, `MVP`  
+Ответственный агент: `ai-product-orchestrator`  
+Участники: `ai-solution-architect`, `ai-system-analyst`, `ai-security-reviewer`, `ai-frontend-developer`, `ai-backend-developer`  
+Приоритет: P0  
+Этап: MVP  
+Статус: Done in Phase 1
+
+Цель: зафиксировать chat-first архитектуру, где AI Discovery Chat является единой точкой входа, а текущие формы этапов остаются structured state артефактов.
+
+Acceptance criteria:
+
+- ADR-004 создан и связан с ADR-003.
+- FastAPI/React runtime сохраняется.
+- Product AI Agents не смешаны с Global Codex Delivery Agents.
+- Запрещена прямая запись AI-чата в `discovery_artifacts`.
+- Зафиксирована цепочка `proposed_patch -> preview -> apply`.
+
+### ARCH-CHAT-02. Обновить связку ADR-003 и Chat Orchestrator
+
+Список Trello: `03 Architecture / ADR`  
+Labels: `Архитектура`, `Chat Orchestrator`, `Agent Runtime`, `MVP`  
+Ответственный агент: `ai-solution-architect`  
+Участники: `ai-product-orchestrator`, `ai-system-analyst`, `ai-backend-developer`  
+Приоритет: P0  
+Этап: MVP  
+Статус: Done in Phase 1
+
+Цель: показать, что ADR-003 описывает Product AI Agents runtime foundation, а ADR-004 и Chat Orchestrator описывают пользовательскую orchestration-границу.
+
+Acceptance criteria:
+
+- ADR-003 содержит ссылку на ADR-004.
+- Создан `Chat Orchestrator Contract`.
+- Описаны intent routing, ToolPolicy, StageProcessorRequest/Result и apply gate.
+
+### BE-RUNTIME-01. StageProcessorRequest/StageProcessorResult
+
+Список Trello: `03 Architecture / ADR`  
+Labels: `Backend`, `Agent Runtime`, `API Contract`, `MVP`  
+Ответственный агент: `ai-backend-developer`  
+Участники: `ai-system-analyst`, `ai-qa-engineer`, `ai-llm-rag-engineer`  
+Приоритет: P0  
+Этап: MVP  
+Статус: Done in Phase 1
+
+Цель: ввести минимальный runtime contract для stage processors до реализации Chat Orchestrator и StageDraftProcessor.
+
+Acceptance criteria:
+
+- Добавлены runtime dataclasses `StageProcessorRequest` и `StageProcessorResult`.
+- Result содержит `proposed_patch`, `preview`, `human_message`, evidence/open questions/warnings/errors.
+- Request имеет проверку secret-like fields.
+- Контракт покрыт backend tests.
+
+### SEC-CHAT-01. ToolPolicy для AI Discovery Chat
+
+Список Trello: `03 Architecture / ADR`  
+Labels: `Security`, `Chat UX`, `Agent Runtime`, `MVP`  
+Ответственный агент: `ai-security-reviewer`  
+Участники: `ai-product-orchestrator`, `ai-backend-developer`, `ai-qa-engineer`  
+Приоритет: P0  
+Этап: MVP  
+Статус: Done in Phase 1
+
+Цель: запретить AI Discovery Chat прямую запись в `discovery_artifacts` и доступ к secrets, разрешив только read/proposed_patch/preview/apply с подтверждением.
+
+Acceptance criteria:
+
+- `ToolPolicy.for_ai_discovery_chat()` описывает allowlist/denylist.
+- `patch.apply` требует `requires_user_confirmation=True`.
+- `discovery_artifacts.write` запрещен.
+- Security requirements обновлены.
 
 ### ARCH-PA-01. Remediation и approval ADR-003 по целевой модели Product AI Agents
 

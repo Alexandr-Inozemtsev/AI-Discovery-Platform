@@ -2,6 +2,8 @@
 
 Дата: 2026-05-14
 
+Обновлено: 2026-07-08 для Phase 1 chat-first architecture.
+
 ## Что такое `BaseAgent`
 
 `BaseAgent` - базовый класс для discovery-агентов backend. Он задает общий контракт:
@@ -29,6 +31,66 @@
 - `errors` - ошибки LLM или fallback.
 - `source_trace` - будущая трассировка источников.
 - `metadata` - runtime metadata: `artifact_type`, `project_id`, trace ids и другие поля.
+
+## `StageProcessorRequest` и `StageProcessorResult`
+
+Для chat-first UX вводится отдельный контракт stage processors. Он не заменяет `AgentResult`; он задает границу для будущих `StageDraftProcessor`, `RequirementsProcessor` и Chat Orchestrator.
+
+`StageProcessorRequest`:
+
+- `project_id`;
+- `artifact_type`;
+- `stage_type`;
+- `project_snapshot`;
+- `input_artifacts`;
+- `context_readiness`;
+- `retrieval_result`;
+- `user_answers`;
+- `prompt_version`;
+- `trace_id`;
+- `metadata`.
+
+Правила request:
+
+- не хранить API keys, bearer tokens, cookies, passwords, MCP credentials, private provider headers;
+- передавать версии и минимальные нужные поля upstream artifacts;
+- передавать chunks/evidence вместо полного корпуса документов, если chunks достаточно;
+- metadata-only sources не считать evidence.
+
+`StageProcessorResult`:
+
+- `ok`;
+- `artifact_type`;
+- `content`;
+- `structured_content`;
+- `proposed_patch`;
+- `preview`;
+- `human_message`;
+- `evidence`;
+- `assumptions`;
+- `open_questions`;
+- `warnings`;
+- `errors`;
+- `used_fallback`;
+- `source_trace`;
+- `metadata`.
+
+Правила result:
+
+- user-facing `human_message`, `warnings` и `open_questions` должны быть на русском языке;
+- `proposed_patch` не применяется автоматически;
+- запись в `discovery_artifacts` допускается только после preview и apply step;
+- raw LLM response не отдаётся frontend payload без отдельной redaction policy.
+
+## `ToolPolicy` для AI Discovery Chat
+
+`ToolPolicy` - runtime boundary для Chat Orchestrator. Минимальная policy Phase 1:
+
+- allow: `artifact.read`, `context.read`, `completion.read`, `stage.status.read`, `question.create`, `proposed_patch.create`, `patch.preview`;
+- conditional allow: `patch.apply` только с `requires_user_confirmation=True`;
+- deny: `discovery_artifacts.write`, `credential.read`, `llm_settings.write_secret`, `prompt.raw_log`.
+
+Это фиксирует правило: AI Discovery Chat может подготовить изменение, объяснить его и показать preview, но не может напрямую менять structured state артефакта.
 
 ## Fallback
 

@@ -13,6 +13,8 @@
 
 - [Экспертный review архитектуры Product AI Agents](product-ai-agents-architecture-review.md);
 - [ADR-003 Product AI Agents target architecture](ADR-003-product-ai-agents-target-architecture.md);
+- [ADR-004 AI Discovery Chat Architecture](ADR-004-ai-discovery-chat-architecture.md);
+- [Chat Orchestrator Contract](chat-orchestrator-contract.md);
 - [Agent Runtime Contract](agent-runtime-contract.md);
 - [SimpleRetriever Contract](simple-retriever-contract.md);
 - [ADR-001 AI/RAG/framework selection](ADR-001-agent-and-rag-framework-selection.md);
@@ -23,14 +25,17 @@
 
 Product AI Agents не должны моделироваться как набор независимых AI-сервисов. Целевая формулировка:
 
-> AI Discovery Platform имеет единый Agent Runtime, который запускает управляемые режимы генерации Discovery-артефактов через stage processors, prompt registry, LLM Gateway, retrieval boundary и единый audit/telemetry layer.
+> AI Discovery Platform имеет единый Agent Runtime, который запускает управляемые режимы генерации Discovery-артефактов через AI Discovery Chat, Chat Orchestrator, stage processors, prompt registry, LLM Gateway, retrieval boundary и единый audit/telemetry layer.
 
 ## 3. Целевая схема
 
 ```mermaid
 flowchart TB
-    UI["React UI: этапы Discovery"] --> API["FastAPI API"]
+    UI["React UI: AI Discovery Chat + формы этапов"] --> API["FastAPI API"]
     API --> Runtime["Agent Runtime"]
+    Runtime --> Chat["Chat Orchestrator"]
+    Chat --> Policy["ToolPolicy"]
+    Chat --> Patch["proposed_patch -> preview -> apply"]
     Runtime --> ContextAgent["ContextIngestionAgent"]
     Runtime --> StageDraft["StageDraftProcessor"]
     Runtime --> Requirements["RequirementsProcessor"]
@@ -40,6 +45,7 @@ flowchart TB
     Runtime --> Gateway["LLM Gateway"]
     Retriever --> Evidence["Chunks + source_trace"]
     PromptRegistry --> StagePolicies["Stage policies"]
+    Patch --> ArtifactsStore["discovery_artifacts"]
     StageDraft --> Artifacts["Problem / Goal / Business Effect / Use Cases"]
     Requirements --> ReqArtifacts["FR / NFR / Final BT"]
     Critic --> Validation["Validation report"]
@@ -52,6 +58,8 @@ flowchart TB
 | Компонент | Назначение | Почему отдельный |
 |---|---|---|
 | `AgentRuntime` | Единый запуск, trace id, error/fallback policy, metadata, audit. | Это cross-cutting слой, общий для всех AI-операций. |
+| `ChatOrchestrator` | Управляет chat intent, stage selection, policy checks, proposed patch, preview и apply gate. | AI Discovery Chat является UX-входом, но не должен напрямую писать structured state. |
+| `ToolPolicy` | Разрешает read/proposed_patch/preview и apply с подтверждением; запрещает прямую запись и доступ к secrets. | Нужен явный security boundary для chat-first UX. |
 | `ContextIngestionAgent` | Извлекает и нормализует контекст, формирует `source_trace`, `coverage`, `readiness`, `problem_handoff`. | Имеет отдельный JSON-контракт и специфичную source logic. |
 | `StageDraftProcessor` | Генерирует draft артефактов Problem, Goal, Business Effect, Use Cases по stage policy. | Уменьшает дублирование stage prompt wrappers. |
 | `RequirementsProcessor` | Генерирует FR/NFR/Final BT с IDs, acceptance criteria, dependencies, evidence. | Требования имеют более строгий contract и delivery impact. |
@@ -127,6 +135,7 @@ class StageProcessorRequest:
 Правила:
 
 - request не должен содержать API keys, bearer tokens, private provider headers;
+- request не должен содержать cookies, MCP credentials, `.env` values или secrets из LLM settings;
 - request должен содержать только нужные upstream artifact versions;
 - metadata-only source не должен попадать как evidence;
 - full documents не передаются в LLM, если достаточно chunks.
@@ -139,6 +148,9 @@ class StageProcessorResult:
     artifact_type: str
     content: str
     structured_content: dict
+    proposed_patch: dict
+    preview: dict
+    human_message: str
     evidence: list[dict]
     assumptions: list[str]
     open_questions: list[str]
@@ -152,9 +164,34 @@ class StageProcessorResult:
 Правила:
 
 - `human_message` и user-facing warnings должны быть на русском языке;
+- `proposed_patch` не применяется автоматически и должен пройти preview/apply gate;
 - `evidence` должен ссылаться на `source_id`, `chunk_id`, `source_name`;
 - если evidence недостаточно, result должен явно вернуть assumptions/open_questions;
 - `raw_llm_response` допускается только в internal metadata с redaction policy, не как публичный frontend payload.
+
+## 8.1 ToolPolicy для AI Discovery Chat
+
+Минимальная policy:
+
+```yaml
+allowed_actions:
+  - artifact.read
+  - context.read
+  - completion.read
+  - stage.status.read
+  - question.create
+  - proposed_patch.create
+  - patch.preview
+conditional_actions:
+  patch.apply: requires_user_confirmation
+denied_actions:
+  - discovery_artifacts.write
+  - credential.read
+  - llm_settings.write_secret
+  - prompt.raw_log
+```
+
+Chat Orchestrator обязан проверять policy до вызова tool/action. Stage processors не получают capability прямой записи в БД.
 
 ## 9. Prompt governance
 
@@ -213,7 +250,7 @@ Endpoint paths должны сохраняться до отдельного ver
 | Architecture gate | Нет overengineering и лишних AI-сервисов; runtime remains own backend component. |
 | Backend gate | Existing API paths и success responses не сломаны. |
 | LLM/RAG gate | Evidence, prompt version, source_trace, token budget, fallback policy описаны. |
-| Security gate | Нет secrets per agent, нет raw prompts/logs без policy, есть prompt injection controls. |
+| Security gate | Нет secrets per agent, нет raw prompts/logs без policy, есть prompt injection controls, AI Discovery Chat не пишет в `discovery_artifacts` без `proposed_patch -> preview -> apply`. |
 | QA gate | Есть contract tests, prompt regression, golden examples. |
 | Documentation gate | Product AI Agents и Global Codex Delivery Agents не смешаны. |
 | Delivery gate | Backlog/Gantt обновлены как draft, Trello API sync не утверждается без факта. |

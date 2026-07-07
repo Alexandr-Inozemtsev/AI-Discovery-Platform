@@ -40,6 +40,21 @@
 - Agent prompt должен явно отделять контекст от инструкций.
 - Результат агента проверяется Critic/validation step на признаки противоречий и неподтверждённых утверждений.
 
+## AI Discovery Chat ToolPolicy
+
+AI Discovery Chat является единой пользовательской точкой входа, но не является trusted writer для `discovery_artifacts`.
+
+Требования:
+
+- Chat Orchestrator обязан проверять `ToolPolicy` до выполнения любого tool/action.
+- Разрешены read-действия, уточняющие вопросы, создание `proposed_patch` и `patch.preview`.
+- `patch.apply` разрешён только после явного подтверждения пользователя.
+- Прямая запись `discovery_artifacts.write` из AI-чата запрещена.
+- Chat не может читать credentials, cookies, API keys, MCP credentials или записывать LLM secrets.
+- Raw prompts и raw LLM responses не логируются без redaction policy.
+- Все user-facing сообщения, предупреждения и вопросы чата должны быть на русском языке.
+- Недоверенный контекст из файлов и ссылок не может расширять allowlist действий.
+
 ## External connectors
 
 - Trello, GitHub, LLM и будущие RAG adapters подключаются только через allowlist.
@@ -75,3 +90,4 @@
 | SEC-04 | Ввести роли и права проекта | P1 | MMP |
 | SEC-05 | Добавить secret storage для production | P1 | MMP |
 | SEC-06 | Ввести SBOM/license gate | P1 | MMP |
+| SEC-CHAT-01 | Ввести `ToolPolicy` для AI Discovery Chat: запрет прямой записи, apply только после preview/confirmation | P0 | MVP |

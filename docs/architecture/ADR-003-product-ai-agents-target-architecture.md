@@ -1,9 +1,9 @@
 # ADR-003: Целевая модель Product AI Agents
 
 Дата: 2026-05-22  
-Статус: draft, рекомендовано к принятию после ARCH-PA-01 approval  
+Статус: accepted as baseline for ADR-004 chat-first architecture  
 Scope: Product AI Agents внутри backend AI Discovery Platform  
-Не scope: Global Codex Delivery Agents, frontend redesign, DB migration, внешние AI frameworks.
+Не scope: Global Codex Delivery Agents, замена FastAPI/React runtime, DB migration, внешние AI frameworks.
 
 Примечание по нумерации: `docs/architecture/adr-002-target-platform-evolution.md` сохраняет номер `ADR-002` и смысл решения по эволюции платформы. ADR по Product AI Agents выделен в отдельный номер `ADR-003`, чтобы исключить конфликт архитектурных ссылок.
 
@@ -51,11 +51,25 @@ Agent Runtime
 Решение означает:
 
 - не считать каждый stage wrapper самостоятельным корпоративным AI-сервисом;
+- использовать эту модель как backend foundation для AI Discovery Chat из `ADR-004`;
 - сохранить отдельным `ContextIngestionAgent`;
 - сохранить отдельным validation/critic component;
 - объединить draft stages через processor + prompt templates;
 - оставить Requirements как специализированный processor из-за delivery-impact и необходимости строгих requirement contracts;
-- не внедрять refactor немедленно, пока не утверждён migration backlog.
+- не давать chat/runtime компонентам прямую запись в `discovery_artifacts` без `proposed_patch -> preview -> apply`;
+- не внедрять полный refactor немедленно, пока не утверждён migration backlog.
+
+## Связка с AI Discovery Chat
+
+`ADR-004` добавляет chat-first UX поверх этой модели. Граница ответственности:
+
+- `Chat Orchestrator` управляет intent, policy, user-facing ответом, proposed patch и apply gate;
+- `StageDraftProcessor` и `RequirementsProcessor` готовят stage-specific результат через `StageProcessorRequest/StageProcessorResult`;
+- `ContextIngestionAgent` остается отдельным workflow для анализа контекста;
+- `CriticAgent` / `ValidationProcessor` остается отдельным validation компонентом;
+- `ToolPolicy` запрещает прямую запись AI-чата в `discovery_artifacts`.
+
+Таким образом, ADR-003 отвечает на вопрос "какая runtime-модель Product AI Agents используется", а ADR-004 отвечает на вопрос "как пользователь управляет этой моделью через chat-first UX".
 
 ## Альтернативы
 
@@ -146,10 +160,12 @@ Agent Runtime
 2. Закрыть BE-02-01: единый `AgentResult` contract для всех генераторов.
 3. Закрыть BE-02-02: определить canonical generation flows и compatibility endpoints.
 4. Спроектировать `StageProcessorRequest` и `StageProcessorResult`.
-5. Добавить `StageDraftProcessor` за существующими endpoint paths.
-6. Подключить `SimpleRetriever` и evidence propagation.
-7. Добавить prompt regression/golden datasets.
-8. Депрецировать лишние stage wrappers только после тестов и release notes.
+5. Ввести `ToolPolicy` для AI Discovery Chat.
+6. Добавить `Chat Orchestrator` как application service без изменения существующих endpoint paths.
+7. Добавить `StageDraftProcessor` за существующими endpoint paths.
+8. Подключить `SimpleRetriever` и evidence propagation.
+9. Добавить prompt regression/golden datasets.
+10. Депрецировать лишние stage wrappers только после тестов и release notes.
 
 ## Corporate wording
 
@@ -173,6 +189,8 @@ Agent Runtime
 ## Связанные документы
 
 - [Экспертный review архитектуры Product AI Agents](product-ai-agents-architecture-review.md);
+- [ADR-004 AI Discovery Chat Architecture](ADR-004-ai-discovery-chat-architecture.md);
+- [Chat Orchestrator Contract](chat-orchestrator-contract.md);
 - [Целевая архитектура Product AI Agents](product-ai-agents-target-architecture.md);
 - [Backlog по архитектурному решению](../backlog/product-ai-agents-architecture-decision-backlog.md);
 - [Agent Runtime Contract](agent-runtime-contract.md);

@@ -23,6 +23,7 @@
 - специализированный `ContextIngestionAgent.analyze()` с `source_trace`, `coverage`, `readiness`, `problem_handoff`;
 - storage discovery artifacts через `DiscoveryArtifact`;
 - DOCX export.
+- Phase 1 contract для `StageProcessorRequest`, `StageProcessorResult` и `ToolPolicy`.
 
 Ограничения:
 
@@ -43,6 +44,7 @@
 | Readiness gates | Управляемые переходы между stages | P1 |
 | SimpleRetriever | Retrieval без внешних RAG dependencies | P1 |
 | Audit trail | История AI runs и source inputs | P1 |
+| Chat Orchestrator | Intent routing, ToolPolicy, proposed patch, preview/apply gate для AI Discovery Chat | P0 |
 | Adapter boundary | LlamaIndex/Haystack/LangGraph только за interfaces | P2 |
 | Workflow adapter | Optional LangGraph pilot | P3 |
 
@@ -83,7 +85,7 @@ Definition of Done:
 
 ## Фаза 2. Registry и policies
 
-Цель: отделить выбор agent от endpoint logic.
+Цель: отделить выбор agent от endpoint logic и подготовить Chat Orchestrator.
 
 Работы:
 
@@ -92,6 +94,8 @@ Definition of Done:
 - определить policy для missing context, missing LLM, LLM timeout, empty response;
 - разделить user-facing errors и diagnostic errors;
 - добавить prompt version в metadata.
+- закрепить `ToolPolicy` для AI Discovery Chat: read/proposed_patch/preview/apply с подтверждением;
+- запретить прямую запись `discovery_artifacts.write` из chat runtime.
 
 Definition of Done:
 
@@ -119,6 +123,28 @@ Definition of Done:
 - top-k и max_chars работают;
 - fallback без retrieval работает;
 - source trace не теряется.
+
+## Фаза 3.5. Chat Orchestrator MVP
+
+Цель: сделать AI Discovery Chat единой точкой входа в Discovery workflow без замены FastAPI/React runtime.
+
+Работы:
+
+- реализовать backend Chat Orchestrator application service;
+- добавить chat endpoint contract, сохраняя существующие endpoint paths;
+- реализовать intent types `explain_state`, `draft_artifact_patch`, `preview_patch`, `apply_patch`, `validate_workflow`;
+- использовать `StageProcessorRequest/StageProcessorResult` для stage changes;
+- показывать `proposed_patch` через preview до записи;
+- применять patch только после user confirmation;
+- все user-facing сообщения возвращать на русском языке.
+
+Definition of Done:
+
+- forms этапов остаются structured state editor/viewer;
+- proposed patch не меняет storage;
+- apply увеличивает artifact version только после confirmation;
+- ToolPolicy покрыт tests;
+- frontend может откатиться на текущие stage forms при выключенном chat feature flag.
 
 ## Фаза 4. Runtime observability и audit
 
