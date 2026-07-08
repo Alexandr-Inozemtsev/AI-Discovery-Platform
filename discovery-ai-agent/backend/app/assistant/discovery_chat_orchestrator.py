@@ -5,8 +5,24 @@ from app.assistant.intent_router import IntentRouter, RoutedIntent
 from app.agents.runtime import StageProcessorResult, ToolAction, ToolPolicy
 from app.agents.runtime.stage_processor_contract import StageProcessorRequest
 from app.models.discovery import ArtifactType, DiscoveryProject
-from app.processors import processor_for_artifact
+from app.processors import RequirementsProcessor, StageDraftProcessor, ValidationProcessor
 from app.rag.simple_retriever import RetrievalQuery, SimpleRetriever
+
+
+def default_processor_registry() -> dict[str, object]:
+    stage_draft_processor = StageDraftProcessor()
+    requirements_processor = RequirementsProcessor()
+    validation_processor = ValidationProcessor()
+    return {
+        ArtifactType.PROBLEM.value: stage_draft_processor,
+        ArtifactType.GOAL.value: stage_draft_processor,
+        ArtifactType.BUSINESS_EFFECT.value: stage_draft_processor,
+        ArtifactType.USE_CASES.value: stage_draft_processor,
+        ArtifactType.FUNCTIONAL_REQUIREMENTS.value: requirements_processor,
+        ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value: requirements_processor,
+        ArtifactType.FINAL_BT.value: requirements_processor,
+        ArtifactType.VALIDATION_REPORT.value: validation_processor,
+    }
 
 
 class DiscoveryChatOrchestrator:
@@ -18,6 +34,7 @@ class DiscoveryChatOrchestrator:
         context_assembler: ChatContextAssembler | None = None,
         response_builder: AssistantResponseBuilder | None = None,
         action_builder: AssistantActionBuilder | None = None,
+        processor_registry: dict[str, object] | None = None,
     ):
         self.intent_router = intent_router or IntentRouter()
         self.tool_policy = tool_policy or ToolPolicy.for_ai_discovery_chat()
@@ -25,6 +42,7 @@ class DiscoveryChatOrchestrator:
         self.context_assembler = context_assembler or ChatContextAssembler()
         self.response_builder = response_builder or AssistantResponseBuilder()
         self.action_builder = action_builder or AssistantActionBuilder()
+        self.processor_registry = processor_registry or default_processor_registry()
 
     def handle_message(
         self,
@@ -37,7 +55,7 @@ class DiscoveryChatOrchestrator:
         artifacts: dict | None = None,
     ) -> dict:
         intent = self.intent_router.route(message, artifact_type)
-        if intent.intent_type in {"draft_artifact_patch", "validate_workflow"} and intent.target_artifact_type:
+        if intent.intent_type in {"draft_artifact_patch", "validate_workflow", "export_document"} and intent.target_artifact_type:
             result = self._draft_patch(project, message, intent, context_artifact or {}, artifacts or {})
         else:
             result = self.response_builder.guidance_response(
@@ -95,7 +113,7 @@ class DiscoveryChatOrchestrator:
             retrieval_result=retrieval_result,
         )
 
-        stage_processor = processor_for_artifact(artifact_type)
+        stage_processor = self.processor_registry.get(artifact_type.value)
         if stage_processor:
             processor_result = stage_processor.process(
                 StageProcessorRequest(

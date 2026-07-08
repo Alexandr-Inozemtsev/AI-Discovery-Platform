@@ -21,8 +21,6 @@ class IntentRouter:
         template = template_for_command(command)
         if template:
             target = template["artifact_type"]
-            if template["intent_type"] in ("export_document",):
-                target = None
             return RoutedIntent(
                 intent_type=template["intent_type"],
                 target_artifact_type=target,

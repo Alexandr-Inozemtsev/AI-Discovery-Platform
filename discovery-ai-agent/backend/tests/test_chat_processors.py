@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.agents.runtime import StageProcessorRequest
+from app.agents.runtime import StageProcessorRequest, StageProcessorResult
 from app.assistant.discovery_chat_orchestrator import DiscoveryChatOrchestrator
 from app.llm.base import BaseLLMClient
 from app.models.discovery import ArtifactType
@@ -40,6 +40,25 @@ class JsonLLMClient(BaseLLMClient):
     def generate(self, prompt: str) -> str:
         self.last_prompt = prompt
         return self.response
+
+
+class SpyProcessor:
+    def __init__(self, artifact_type: ArtifactType, patch: dict):
+        self.artifact_type = artifact_type
+        self.patch = patch
+        self.calls = []
+
+    def process(self, request: StageProcessorRequest) -> StageProcessorResult:
+        self.calls.append(request)
+        return StageProcessorResult(
+            ok=True,
+            artifact_type=self.artifact_type.value,
+            structured_content=self.patch,
+            proposed_patch=self.patch,
+            preview={"changed_fields": list(self.patch.keys())},
+            human_message="Processor result",
+            metadata={"processor": "spy_processor"},
+        )
 
 
 def test_stage_draft_processor_builds_structured_problem_goal_effect_and_use_cases():
@@ -549,6 +568,49 @@ def test_discovery_chat_orchestrator_critic_returns_validation_report_patch():
     assert result.artifact_type == ArtifactType.VALIDATION_REPORT.value
     assert result.proposed_patch["overall_status"] == "blocked"
     assert result.requires_apply_step() is True
+
+
+def test_orchestrator_uses_processor_registry_for_problem_requirements_and_critic():
+    problem_processor = SpyProcessor(ArtifactType.PROBLEM, {"problem_statement": "from processor"})
+    requirements_processor = SpyProcessor(ArtifactType.FUNCTIONAL_REQUIREMENTS, {"functional_requirements": [{"id": "FR-001"}]})
+    validation_processor = SpyProcessor(ArtifactType.VALIDATION_REPORT, {"overall_status": "warning", "checks": []})
+    orchestrator = DiscoveryChatOrchestrator(
+        processor_registry={
+            ArtifactType.PROBLEM.value: problem_processor,
+            ArtifactType.FUNCTIONAL_REQUIREMENTS.value: requirements_processor,
+            ArtifactType.VALIDATION_REPORT.value: validation_processor,
+        }
+    )
+    project = SimpleNamespace(id="project_1", project_name="ИБС", business_domain="Банк")
+
+    problem = orchestrator.handle_message(project=project, message="@problem сформулируй", context_artifact={}, artifacts={})["result"]
+    requirements = orchestrator.handle_message(project=project, message="@requirements сформируй", context_artifact={}, artifacts={})["result"]
+    critic = orchestrator.handle_message(project=project, message="@critic проверь", context_artifact={}, artifacts={})["result"]
+
+    assert problem.proposed_patch == {"problem_statement": "from processor"}
+    assert requirements.proposed_patch == {"functional_requirements": [{"id": "FR-001"}]}
+    assert critic.proposed_patch == {"overall_status": "warning", "checks": []}
+    assert problem_processor.calls[0].artifact_type == ArtifactType.PROBLEM.value
+    assert requirements_processor.calls[0].artifact_type == ArtifactType.FUNCTIONAL_REQUIREMENTS.value
+    assert validation_processor.calls[0].artifact_type == ArtifactType.VALIDATION_REPORT.value
+
+
+def test_orchestrator_export_intent_uses_requirements_processor_for_final_bt():
+    final_bt_processor = SpyProcessor(ArtifactType.FINAL_BT, {"sections": [{"id": "context", "content": ""}]})
+    orchestrator = DiscoveryChatOrchestrator(
+        processor_registry={ArtifactType.FINAL_BT.value: final_bt_processor}
+    )
+
+    result = orchestrator.handle_message(
+        project=SimpleNamespace(id="project_1", project_name="ИБС", business_domain="Банк"),
+        message="@export подготовь финальный БТ",
+        context_artifact={},
+        artifacts={},
+    )["result"]
+
+    assert result.artifact_type == ArtifactType.FINAL_BT.value
+    assert result.proposed_patch == {"sections": [{"id": "context", "content": ""}]}
+    assert final_bt_processor.calls[0].artifact_type == ArtifactType.FINAL_BT.value
 
 
 def test_orchestrator_does_not_build_domain_patch_without_processor():
