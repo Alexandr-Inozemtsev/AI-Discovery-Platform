@@ -1,3 +1,12 @@
+import type {
+  AssistantApplyPatchRequest,
+  AssistantApplyPatchResponse,
+  AssistantChatRequest,
+  AssistantChatResponse,
+  AssistantMessagesResponse,
+  AssistantSessionsResponse,
+} from '../types/discovery'
+
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
 export class ApiError extends Error {
@@ -33,4 +42,25 @@ export async function apiForm<T>(path: string, body: FormData): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { method: 'POST', body })
   if (!res.ok) throw await parseApiError(res)
   return res.json()
+}
+
+export const assistantApi = {
+  sendMessage(projectId: string, payload: AssistantChatRequest) {
+    return api<AssistantChatResponse>(`/projects/${projectId}/assistant/chat`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+  listSessions(projectId: string) {
+    return api<AssistantSessionsResponse>(`/projects/${projectId}/assistant/sessions`)
+  },
+  listMessages(projectId: string, sessionId: string) {
+    return api<AssistantMessagesResponse>(`/projects/${projectId}/assistant/sessions/${sessionId}/messages`)
+  },
+  applyPatch(projectId: string, payload: AssistantApplyPatchRequest) {
+    return api<AssistantApplyPatchResponse>(`/projects/${projectId}/assistant/apply-patch`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
 }

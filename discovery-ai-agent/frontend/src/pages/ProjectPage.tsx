@@ -2,9 +2,10 @@ import { Download, MoreHorizontal, Database, RefreshCcw, FileText, FileSpreadshe
 import RichEditor from '../components/RichEditor'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ApiError, api, apiForm } from '../api/client'
-import { ArtifactType, Project } from '../types/discovery'
+import { ApiError, api, apiForm, assistantApi } from '../api/client'
+import { ArtifactType, AssistantAction, AssistantMessage, Project } from '../types/discovery'
 import AIActionBar from '../ui/components/AIActionBar'
+import AIAssistantPanel, { SuggestedActionKey } from '../ui/components/AIAssistantPanel'
 import ErrorBoundary from '../components/ErrorBoundary'
 import Button from '../ui/components/Button'
 import ButtonLink from '../ui/components/ButtonLink'
@@ -124,6 +125,7 @@ export default function ProjectPage(){
   const {projectId}=useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const [project,setProject]=useState<Project|null>(null); const [active,setActive]=useState<ArtifactType>('CONTEXT')
   const [content,setContent]=useState(''); const [richJson,setRichJson]=useState<any>(null); const [structured,setStructured]=useState<any>({}); const [ver,setVer]=useState<number|null>(null); const [updated,setUpdated]=useState('');
   const [cmp,setCmp]=useState<any>(null); const [pipeline,setPipeline]=useState<Record<string,any>>({}); const [msg,setMsg]=useState(''); const [aiActionLoading,setAiActionLoading]=useState<string|null>(null); const [aiActionStatus,setAiActionStatus]=useState<Record<string,'idle'|'success'|'error'>>({}); const [goalDraft,setGoalDraft]=useState<any>(null); const [busy,setBusy]=useState(false); const [saving,setSaving]=useState<'idle'|'saving'|'saved'|'error'>('idle');
+  const [assistantSessionId,setAssistantSessionId]=useState<string|null>(null); const [assistantMessages,setAssistantMessages]=useState<AssistantMessage[]>([]); const [assistantInput,setAssistantInput]=useState(''); const [assistantPendingAction,setAssistantPendingAction]=useState<AssistantAction|null>(null); const [assistantLoading,setAssistantLoading]=useState(false); const [assistantApplying,setAssistantApplying]=useState(false); const [assistantError,setAssistantError]=useState('');
   const [contextInput,setContextInput]=useState<ContextInput>(emptyInput); const [linkDraft,setLinkDraft]=useState(''); const [goalQuestion,setGoalQuestion]=useState(''); const [goalPatch,setGoalPatch]=useState<any>(null); const [stageQuestion,setStageQuestion]=useState(''); const [stagePatch,setStagePatch]=useState<any>(null); const [questionAnswers,setQuestionAnswers]=useState<Record<string,string>>({}); const [questionGenLoading,setQuestionGenLoading]=useState(false); const [answerLoadingId,setAnswerLoadingId]=useState<string|null>(null); const [documents,setDocuments]=useState<any[]>([]); const [links,setLinks]=useState<any[]>([]); const [knowledge,setKnowledge]=useState<any>(null); const [thinking,setThinking]=useState(false); const [contextReady,setContextReady]=useState(false); const [contextArtifactVersion,setContextArtifactVersion]=useState<number|null>(null); const [problemDraft,setProblemDraft]=useState<any>({main_problem:'',user_pains:[],business_pains:[],root_causes:[],consequences_if_not_solved:[],evidence_signals:[],problem_statement:'',assumptions:[],missing_information:[],clarifying_questions:[],ai_chat_history:[],versions:[],status:'draft',source_context_version:0,problem_handoff:{},source_trace:[],context_readiness:{}}); const [problemPatch,setProblemPatch]=useState<any>(null); const [problemChat,setProblemChat]=useState('')
   const current=tabs.find(t=>t.type===active)
   const ensureRuntimeReady = async () => {
@@ -140,6 +142,72 @@ export default function ProjectPage(){
 
   const loadCompletion=async()=>{setCmp(await api<any>(`/projects/${projectId}/completion`).catch(()=>null)); const arts=await api<any[]>(`/projects/${projectId}/artifacts`).catch(()=>[]); const p:Record<string,any>={}; arts.forEach(a=>p[a.artifact_type]=a.structured_content?.pipeline_meta||{status:(a.content||'').trim()?'ready':'empty',version:a.version,updated_at:a.updated_at,source_artifacts:[],source_versions:{}}); setPipeline(p)}
   const load=async()=>{try{setProject(await api<Project>(`/projects/${projectId}`)); await loadCompletion()}catch{setMsg('Проект не найден')}}
+  const loadAssistantSession=async()=>{
+    if(!projectId) return
+    try{
+      const sessions=await assistantApi.listSessions(projectId)
+      const latest=sessions.sessions?.[0]
+      if(!latest) return
+      setAssistantSessionId(latest.id)
+      const history=await assistantApi.listMessages(projectId, latest.id)
+      setAssistantMessages(history.messages||[])
+    }catch(e:any){
+      setAssistantError(e?.message||'Не удалось загрузить историю AI-чата')
+    }
+  }
+  const sendAssistantMessage=async(message?:string)=>{
+    if(!projectId) return
+    const text=(message ?? assistantInput).trim()
+    if(!text) return
+    try{
+      setAssistantLoading(true)
+      setAssistantError('')
+      const response=await assistantApi.sendMessage(projectId,{
+        message:text,
+        session_id:assistantSessionId,
+        artifact_type:active,
+        context:{active_stage:active, artifact_version:ver, project_name:project?.project_name}
+      })
+      setAssistantSessionId(response.session_id)
+      setAssistantMessages(prev=>[...prev,response.user_message,response.assistant_message])
+      setAssistantPendingAction(response.action||null)
+      setAssistantInput('')
+      if(response.errors?.length) setAssistantError(response.errors.join('\n'))
+    }catch(e:any){
+      setAssistantError(e?.message||'Ошибка AI-чата')
+    }finally{
+      setAssistantLoading(false)
+    }
+  }
+  const applyAssistantPatch=async()=>{
+    if(!projectId || !assistantSessionId || !assistantPendingAction){
+      setAssistantError('Нет подготовленного patch для применения.')
+      return
+    }
+    try{
+      setAssistantApplying(true)
+      setAssistantError('')
+      const response=await assistantApi.applyPatch(projectId,{session_id:assistantSessionId,action_id:assistantPendingAction.id})
+      const target=response.artifact.artifact_type
+      setAssistantPendingAction(response.action)
+      setActive(target)
+      await loadArtifact(target)
+      await loadCompletion()
+      setMsg('Patch применён в артефакт после preview')
+    }catch(e:any){
+      setAssistantError(e?.message||'Ошибка применения patch')
+    }finally{
+      setAssistantApplying(false)
+    }
+  }
+  const handleAssistantSuggestedAction=async(action:SuggestedActionKey)=>{
+    if(action==='apply'){ await applyAssistantPatch(); return }
+    if(action==='open_stage'){ setActive(assistantPendingAction?.target_artifact_type || active); return }
+    if(action==='show_sources'){ setActive('CONTEXT'); return }
+    if(action==='ask_questions'){ await sendAssistantMessage(`Задай уточняющие вопросы для этапа ${humanStage[active] || active}.`); return }
+    if(action==='quality_check'){ await validate(); return }
+    if(action==='export_docx'){ window.open(`http://localhost:8000/api/projects/${projectId}/export/docx`,'_blank') }
+  }
   const loadStageQuestions=async()=>{try{await ensureRuntimeReady(); const r=await api<any>(`/projects/${projectId}/stage/${active}/questions`,{method:'POST'}); if(active==='PROBLEM') setProblemDraft((p:any)=>({...p, clarifying_questions:r.questions||[]})); else setStructured((st:any)=>({...st, ai_questions:r.questions||[]})); const mapped:Record<string,string>={}; (Array.isArray(r.questions)?r.questions:[]).forEach((q:any,i:number)=>{const id=(typeof q==='string'?`q_${i}`:q.id); mapped[id]=typeof q==='string'?'':(q.answer||'')}); setQuestionAnswers(prev=>({...prev,...mapped})); return r}catch(e:any){throw new Error(e?.message||'Не удалось сгенерировать вопросы')}}
   const regenerateStageQuestions=async()=>{try{setQuestionGenLoading(true); await loadStageQuestions(); setMsg('Дополнительные вопросы сгенерированы')}catch(e:any){setMsg(e?.message||'Ошибка генерации вопросов')}finally{setQuestionGenLoading(false)}}
   const applyContextSnapshot=(artifact:any)=>{
@@ -203,7 +271,7 @@ export default function ProjectPage(){
       }
     }
   }
-  useEffect(()=>{load(); if(projectId) localStorage.setItem('lastOpenedProjectId', projectId)},[projectId]);
+  useEffect(()=>{load(); loadAssistantSession(); if(projectId) localStorage.setItem('lastOpenedProjectId', projectId)},[projectId]);
   useEffect(()=>{const st = searchParams.get('stage') as ArtifactType | null; if(st && tabs.some(t=>t.type===st)) setActive(st)},[searchParams]);
   useEffect(()=>{loadArtifact(active); loadStageQuestions(); if(projectId) navigate(`/projects/${projectId}?stage=${active}`, { replace:true })},[active,projectId])
 
@@ -422,13 +490,16 @@ export default function ProjectPage(){
   }
 
   if(!project) return <div className='ui-card'>Проект не найден</div>
-  return <div className='workspace-single'>
-    <section>
+  return <div className='workspace-single project-workspace-chat'>
+    <aside className='project-workspace-nav'>
       <div className='ui-card page-section-gap'>
+        <div className='chat-first-marker'>AI Discovery Chat — основная точка входа</div>
         <div className='top-progress'><div><span className='sub'>Общий прогресс: <b>{cmp?.completion_percent ?? 0}%</b></span><progress className='progress-native' value={cmp?.completion_percent ?? 0} max={100} /></div></div>
-        <div className='ui-stage-tabs'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <Button key={t.type} size='sm' variant='ghost' className={`ui-stage-tab ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></Button>})}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
+        <div className='ui-stage-tabs ui-stage-tabs--vertical'>{tabs.map(t=>{const st=(pipeline[t.type]?.status||'empty'); return <Button key={t.type} size='sm' variant='ghost' className={`ui-stage-tab ${active===t.type?'active':''}`} onClick={()=>setActive(t.type)}>{t.label}<span className={`pipe-dot ${st}`}/></Button>})}</div>{showGoalNotice && <div className='goal-notice'>Цель изменилась после последней генерации этого раздела. Рекомендуется обновить раздел.</div>}<AIActionBar actions={aiActionsByStage[active]||[]} loading={aiActionLoading}/>
       </div>
+    </aside>
 
+    <section className='project-workspace-main'>
       <div className='ui-card'>
         <div className='ui-actions ui-actions--between'>
           <div><h2 className='section-title-main'>{current?.label}</h2><p className='sub sub-reset'>{project.project_name} · В работе · Версия {ver??0} · Обновлено: {updated?new Date(updated).toLocaleString('ru-RU'):'—'}</p></div>
@@ -462,5 +533,18 @@ export default function ProjectPage(){
         {msg && <p className={`sub ${msg==='Сохранено' || msg==='Генерация завершена' ? '' : ''}`}>{msg}</p>}
       </div>
     </section>
+    <AIAssistantPanel
+      activeStage={active}
+      stageLabel={current?.label || active}
+      messages={assistantMessages}
+      input={assistantInput}
+      loading={assistantLoading}
+      applying={assistantApplying}
+      error={assistantError}
+      pendingAction={assistantPendingAction}
+      onInputChange={setAssistantInput}
+      onSend={sendAssistantMessage}
+      onSuggestedAction={handleAssistantSuggestedAction}
+    />
   </div>
 }
