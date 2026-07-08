@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from sqlalchemy.orm import Session
 
 from app.agents.runtime import ToolAction, ToolPolicy
@@ -6,6 +9,26 @@ from app.models.assistant import AssistantAction
 from app.models.discovery import ArtifactType
 from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as discovery_repo
+
+
+def build_patch_audit_summary(patch: dict | None) -> dict:
+    safe_patch = patch if isinstance(patch, dict) else {}
+    canonical = json.dumps(safe_patch, sort_keys=True, ensure_ascii=False, default=str)
+    evidence = safe_patch.get("evidence") if isinstance(safe_patch.get("evidence"), list) else []
+    assumptions = safe_patch.get("assumptions") if isinstance(safe_patch.get("assumptions"), list) else []
+    open_questions = safe_patch.get("open_questions") if isinstance(safe_patch.get("open_questions"), list) else []
+    return {
+        "patch_hash": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "changed_fields": [
+            key
+            for key in safe_patch.keys()
+            if key not in {"evidence", "assumptions", "open_questions", "source_trace"}
+        ],
+        "evidence_count": len(evidence),
+        "assumption_count": len(assumptions),
+        "open_question_count": len(open_questions),
+        "has_evidence": bool(evidence),
+    }
 
 
 class ApplyPatchService:
@@ -25,6 +48,10 @@ class ApplyPatchService:
             raise api_error(404, "ARTIFACT_NOT_FOUND", "Действие AI-чата не найдено.")
         if action.status == "applied":
             raise api_error(400, "VALIDATION_ERROR", "Patch уже применён.")
+        if action.action_type != "proposed_patch":
+            raise api_error(400, "VALIDATION_ERROR", "Можно применять только proposed_patch.")
+        if action.status not in {"proposed", "previewed"}:
+            raise api_error(400, "VALIDATION_ERROR", "Patch нельзя применить в текущем статусе.")
         if not action.target_artifact_type or not action.proposed_patch:
             raise api_error(400, "VALIDATION_ERROR", "У действия нет patch для применения.")
         if not self.tool_policy.is_allowed(
@@ -42,11 +69,12 @@ class ApplyPatchService:
         structured.update(action.proposed_patch)
         content = self._content_from_patch(artifact_type, structured, previous.content if previous else "")
         saved = discovery_repo.upsert_artifact(db, project_id, artifact_type, content, structured_content=structured)
+        audit_summary = build_patch_audit_summary(action.proposed_patch)
         result = {
             "artifact_id": saved.id,
             "artifact_type": saved.artifact_type.value,
             "version": saved.version,
-            "applied_patch": action.proposed_patch,
+            **audit_summary,
         }
         updated_action = assistant_repo.update_action(db, action, status="applied", result=result)
         assistant_repo.add_tool_run(
@@ -56,7 +84,11 @@ class ApplyPatchService:
             action_id=action_id,
             tool_name="patch.apply",
             status="success",
-            input_json={"target_artifact_type": action.target_artifact_type, "patch": action.proposed_patch},
+            input_json={
+                "target_artifact_type": action.target_artifact_type,
+                "patch_hash": audit_summary["patch_hash"],
+                "changed_fields": audit_summary["changed_fields"],
+            },
             output_json=result,
         )
         return {"artifact": saved, "action": updated_action}

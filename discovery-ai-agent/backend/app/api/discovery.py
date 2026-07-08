@@ -15,7 +15,7 @@ from app.schemas.assistant import AssistantApplyPatchRequest, AssistantChatReque
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.docx_export_service import build_docx
 from app.services.content_extraction import extract_text_from_upload
-from app.services.apply_patch_service import ApplyPatchService
+from app.services.apply_patch_service import ApplyPatchService, build_patch_audit_summary
 from fastapi.responses import StreamingResponse
 import json
 from urllib import request, error
@@ -29,6 +29,7 @@ critic = None
 LLM_STATUS_SET = {'mock','not_configured','connected','error','timeout','unauthorized','model_not_found','backend_error'}
 SUPPORTED_CONTEXT_EXTENSIONS = {'txt', 'md', 'csv', 'docx', 'pdf', 'xlsx', 'xls'}
 MAX_CONTEXT_FILE_SIZE = 15 * 1024 * 1024
+SAFE_PROVIDER_ERROR_MESSAGE = 'Детали ошибки скрыты. Проверьте настройки provider и backend logs.'
 
 SECTION_META = {
     "CONTEXT": ("Контекст", True), "PROBLEM": ("Проблема", True), "GOAL": ("Цель", True), "BUSINESS_EFFECT": ("Бизнес-эффект", True),
@@ -100,6 +101,9 @@ def _normalize_llm_status(raw_status: str | None, last_error: str | None = None)
         return 'model_not_found'
     return 'error' if rs else 'not_configured'
 
+def _safe_last_error(last_error: str | None) -> str | None:
+    return SAFE_PROVIDER_ERROR_MESSAGE if last_error else None
+
 def _serialize_llm_settings_row(s: LLMSettings | None) -> dict:
     provider = ((s.provider if s else 'mock') or 'mock').lower()
     base_url = (s.base_url if s else 'https://openrouter.ai/api/v1') or ''
@@ -124,7 +128,7 @@ def _serialize_llm_settings_row(s: LLMSettings | None) -> dict:
         'last_connection_status': status,
         'last_latency_ms': (s.last_latency_ms if s else 0) or 0,
         'last_actual_model': (s.last_actual_model if s else '') or '',
-        'last_error': (s.last_error if s else None),
+        'last_error': _safe_last_error(s.last_error if s else None),
         'human_message': _status_message(status)
     }
 
@@ -811,6 +815,7 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
 
     action = None
     if result.proposed_patch:
+        patch_audit = build_patch_audit_summary(result.proposed_patch)
         action = assistant_repo.add_action(
             db,
             project_id=project_id,
@@ -830,8 +835,19 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
             action_id=action.id,
             tool_name='patch.preview',
             status='success',
-            input_json={'proposed_patch': result.proposed_patch},
-            output_json={'preview': result.preview},
+            input_json={
+                'target_artifact_type': result.artifact_type,
+                'patch_hash': patch_audit['patch_hash'],
+                'changed_fields': patch_audit['changed_fields'],
+            },
+            output_json={
+                'target_artifact_type': result.artifact_type,
+                'changed_fields': patch_audit['changed_fields'],
+                'evidence_count': patch_audit['evidence_count'],
+                'assumption_count': patch_audit['assumption_count'],
+                'open_question_count': patch_audit['open_question_count'],
+                'warnings': result.warnings,
+            },
         )
 
     return {

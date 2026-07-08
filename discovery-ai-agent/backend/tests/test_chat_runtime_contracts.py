@@ -69,3 +69,38 @@ def test_tool_policy_allows_preview_and_apply_but_blocks_direct_artifact_write()
     assert policy.is_allowed(ToolAction(name="patch.apply", target="PROBLEM", requires_user_confirmation=True))
     assert not policy.is_allowed(ToolAction(name="discovery_artifacts.write", target="PROBLEM"))
     assert not policy.is_allowed(ToolAction(name="patch.apply", target="PROBLEM", requires_user_confirmation=False))
+
+
+def test_tool_policy_allows_only_read_operations_for_external_mcp_tools():
+    policy = ToolPolicy.for_ai_discovery_chat()
+
+    for action_name in (
+        "confluence.search",
+        "confluence.read",
+        "jira.search",
+        "jira.read",
+        "git.read",
+        "rag.search",
+        "rag.read",
+    ):
+        assert policy.is_allowed(ToolAction(name=action_name, target="corporate_tool_gateway"))
+
+    for action_name in (
+        "confluence.write",
+        "jira.write",
+        "git.write",
+        "git.push",
+        "rag.write",
+        "mcp.credentials.read",
+    ):
+        assert not policy.is_allowed(ToolAction(name=action_name, target="corporate_tool_gateway"))
+
+
+def test_repo_has_gitignore_for_local_config_and_secret_files():
+    repo_root = Path(__file__).resolve().parents[3]
+    gitignore = repo_root / ".gitignore"
+
+    assert gitignore.exists()
+    content = gitignore.read_text(encoding="utf-8")
+    for pattern in (".env", "*.local", "*.key", "*.pem", "credentials*", "cookies*", "token*", "node_modules/", ".venv/"):
+        assert pattern in content

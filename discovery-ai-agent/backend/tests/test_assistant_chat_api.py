@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -9,7 +10,10 @@ from sqlalchemy.orm import sessionmaker
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.api import discovery
+from app.models.assistant import AssistantToolRun
 from app.models.discovery import ArtifactType, Base, DiscoveryProject
+from app.models.llm_settings import LLMSettings
+from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as discovery_repo
 
 
@@ -147,3 +151,89 @@ def test_assistant_chat_uses_context_retrieval_and_propagates_evidence():
     assert metadata["evidence"][0]["chunk_id"] == "chunk_1"
     assert "doc_meta" not in {row.get("source_id") for row in metadata["evidence"]}
     assert preview["evidence_count"] == 1
+
+
+def test_assistant_tool_runs_do_not_store_full_patch_or_retrieved_chunk_text():
+    db = _session()
+    project = _create_project(db)
+    sensitive_chunk = "СЕКРЕТНЫЙ КОРПОРАТИВНЫЙ ФРАГМЕНТ: клиентский процесс и внутренний регламент."
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.CONTEXT,
+        "",
+        structured_content={
+            "uploaded_files": [
+                {
+                    "id": "doc_1",
+                    "name": "internal.md",
+                    "text_extraction_status": "completed",
+                    "chunks": [{"id": "chunk_1", "text": sensitive_chunk, "order": 0}],
+                }
+            ],
+            "source_trace": [
+                {"source_id": "doc_1", "source_type": "document", "source_name": "internal.md", "used": True, "content_level": "chunks"}
+            ],
+        },
+    )
+
+    chat = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="@problem клиентский процесс", artifact_type=None),
+        db=db,
+    )
+    discovery.assistant_apply_patch(
+        project.id,
+        discovery.AssistantApplyPatchRequest(session_id=chat["session_id"], action_id=chat["action"]["id"]),
+        db=db,
+    )
+
+    rows = db.query(AssistantToolRun).filter(AssistantToolRun.project_id == project.id).all()
+    serialized = json.dumps(
+        [{"input": row.input_json, "output": row.output_json, "error": row.error_message} for row in rows],
+        ensure_ascii=False,
+    )
+
+    assert sensitive_chunk not in serialized
+    assert "proposed_patch" not in serialized
+    assert '"patch"' not in serialized
+    assert "patch_hash" in serialized
+
+
+def test_assistant_apply_patch_rejects_rejected_or_failed_actions():
+    db = _session()
+    project = _create_project(db)
+    chat = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="Проблема: ручной процесс.", artifact_type=ArtifactType.PROBLEM),
+        db=db,
+    )
+    action = assistant_repo.get_action(db, project.id, chat["session_id"], chat["action"]["id"])
+    assistant_repo.update_action(db, action, status="rejected")
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=chat["session_id"], action_id=chat["action"]["id"]),
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["human_message"] == "Patch нельзя применить в текущем статусе."
+
+
+def test_llm_settings_serializer_does_not_expose_raw_provider_error_details():
+    row = LLMSettings(
+        provider="openrouter",
+        base_url="https://private-provider.example/v1",
+        api_key="sk-secret-value",
+        model="secret-model",
+        last_connection_status="backend_error",
+        last_error="HTTP 500 https://private-provider.example/v1 Authorization: Bearer sk-secret-value stack trace",
+    )
+
+    payload = discovery._serialize_llm_settings_row(row)
+
+    assert payload["last_error"] == "Детали ошибки скрыты. Проверьте настройки provider и backend logs."
+    assert "private-provider" not in payload["last_error"]
+    assert "sk-secret-value" not in payload["last_error"]
