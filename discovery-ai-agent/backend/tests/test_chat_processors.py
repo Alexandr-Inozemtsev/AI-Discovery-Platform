@@ -419,10 +419,136 @@ def test_validation_processor_builds_validation_report_without_applying_patch():
 
     assert result.ok is True
     assert result.artifact_type == ArtifactType.VALIDATION_REPORT.value
-    assert result.proposed_patch == {}
-    assert result.structured_content["validation_status"] == "requires_attention"
+    assert result.proposed_patch["overall_status"] == "blocked"
+    assert result.structured_content["overall_status"] == "blocked"
     assert result.structured_content["warnings"]
     assert "проверил" in result.human_message.lower()
+
+
+def test_validation_processor_empty_project_returns_blocked_report():
+    processor = ValidationProcessor()
+
+    result = processor.process(
+        StageProcessorRequest(
+            project_id="project_1",
+            artifact_type=ArtifactType.VALIDATION_REPORT.value,
+            stage_type=ArtifactType.VALIDATION_REPORT.value,
+            input_artifacts={},
+            metadata={"message": "@critic проверь качество"},
+        )
+    )
+
+    report = result.proposed_patch
+    assert result.ok is True
+    assert result.requires_apply_step() is True
+    assert report["overall_status"] == "blocked"
+    assert report["score"] == 0
+    assert report["blockers"]
+    assert any(check["stage"] == "CONTEXT" for check in report["checks"])
+    assert all(check.keys() >= {"id", "stage", "severity", "message", "recommendation", "linked_artifact_type", "evidence"} for check in report["checks"])
+
+
+def test_validation_processor_missing_goal_kpi_returns_warning_and_next_action():
+    processor = ValidationProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.VALIDATION_REPORT.value,
+        stage_type=ArtifactType.VALIDATION_REPORT.value,
+        input_artifacts={
+            ArtifactType.PROBLEM.value: {"structured_content": {"problem_statement": "Ручная проверка задерживает клиента", "user_pains": ["Ожидание"], "root_causes": ["Ручной процесс"], "evidence": [{"source_id": "doc_1"}]}},
+            ArtifactType.GOAL.value: {"structured_content": {"desired_outcome": "Сократить ручную проверку", "smart_analysis": {"specific": "Да"}, "open_questions": []}},
+        },
+    )
+
+    result = processor.process(request)
+    report = result.proposed_patch
+
+    assert report["overall_status"] == "warning"
+    assert any(check["stage"] == "GOAL" and check["severity"] == "warning" for check in report["checks"])
+    assert any("KPI" in action or "open_questions" in action for action in report["next_actions"])
+
+
+def test_validation_processor_requirements_without_evidence_return_warning():
+    processor = ValidationProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.VALIDATION_REPORT.value,
+        stage_type=ArtifactType.VALIDATION_REPORT.value,
+        input_artifacts={
+            ArtifactType.PROBLEM.value: {"structured_content": {"problem_statement": "Ручная проверка", "assumptions": ["Подтвердить"]}},
+            ArtifactType.GOAL.value: {"structured_content": {"desired_outcome": "Сократить проверку", "success_metrics": [{"name": "Время"}]}},
+            ArtifactType.FUNCTIONAL_REQUIREMENTS.value: {
+                "structured_content": {
+                    "functional_requirements": [
+                        {
+                            "id": "FR-001",
+                            "text": "Система проверяет договор",
+                            "priority": "MUST",
+                            "acceptance_criteria": ["Результат доступен"],
+                            "linked_use_case": None,
+                            "evidence": [],
+                            "assumption": False,
+                        }
+                    ]
+                }
+            },
+        },
+    )
+
+    result = processor.process(request)
+    report = result.proposed_patch
+
+    assert any(check["stage"] == "REQUIREMENTS" and check["severity"] == "warning" for check in report["checks"])
+    assert "Требование FR-001 не связано с use case/evidence/assumption." in report["warnings"]
+
+
+def test_validation_processor_stale_dependency_returns_blocker():
+    processor = ValidationProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.VALIDATION_REPORT.value,
+        stage_type=ArtifactType.VALIDATION_REPORT.value,
+        input_artifacts={
+            ArtifactType.FINAL_BT.value: {
+                "version": 1,
+                "structured_content": {
+                    "sections": [
+                        {"id": "context", "title": "Контекст", "content": "ok"},
+                        {"id": "problem", "title": "Проблема", "content": "ok"},
+                        {"id": "goal", "title": "Цель", "content": "ok"},
+                        {"id": "business_effect", "title": "Бизнес-эффект", "content": "ok"},
+                        {"id": "use_cases", "title": "Use Cases", "content": "ok"},
+                        {"id": "requirements", "title": "Требования", "content": "ok"},
+                    ],
+                    "artifact_versions": {ArtifactType.PROBLEM.value: 1},
+                    "unresolved_questions": [],
+                },
+            },
+            ArtifactType.PROBLEM.value: {"version": 2, "structured_content": {"problem_statement": "Обновлённая проблема"}},
+        },
+    )
+
+    result = processor.process(request)
+    report = result.proposed_patch
+
+    assert report["overall_status"] == "blocked"
+    assert any("stale" in blocker.lower() or "устар" in blocker.lower() for blocker in report["blockers"])
+
+
+def test_discovery_chat_orchestrator_critic_returns_validation_report_patch():
+    orchestrator = DiscoveryChatOrchestrator()
+
+    result = orchestrator.handle_message(
+        project=SimpleNamespace(id="project_1", project_name="ИБС", business_domain="Банк"),
+        message="@critic проверь качество",
+        artifact_type=None,
+        context_artifact={},
+        artifacts={},
+    )["result"]
+
+    assert result.artifact_type == ArtifactType.VALIDATION_REPORT.value
+    assert result.proposed_patch["overall_status"] == "blocked"
+    assert result.requires_apply_step() is True
 
 
 def test_orchestrator_does_not_build_domain_patch_without_processor():

@@ -37,7 +37,7 @@ class DiscoveryChatOrchestrator:
         artifacts: dict | None = None,
     ) -> dict:
         intent = self.intent_router.route(message, artifact_type)
-        if intent.intent_type == "draft_artifact_patch" and intent.target_artifact_type:
+        if intent.intent_type in {"draft_artifact_patch", "validate_workflow"} and intent.target_artifact_type:
             result = self._draft_patch(project, message, intent, context_artifact or {}, artifacts or {})
         else:
             result = self.response_builder.guidance_response(
@@ -165,6 +165,7 @@ class DiscoveryChatOrchestrator:
             ArtifactType.BUSINESS_EFFECT: "эффект FTE стоимость риск метрики доход качество",
             ArtifactType.USE_CASES: "сценарии пользователи роли исключения требования",
             ArtifactType.FUNCTIONAL_REQUIREMENTS: "требования системы роли правила интеграции данные",
+            ArtifactType.VALIDATION_REPORT: "качество validation readiness blockers warnings evidence completeness",
             ArtifactType.CONTEXT: "контекст источники readiness coverage gaps",
         }
         return f"{clean} {stage_terms.get(artifact_type, '')}".strip()

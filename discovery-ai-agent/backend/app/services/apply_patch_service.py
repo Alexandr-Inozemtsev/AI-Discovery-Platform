@@ -124,6 +124,10 @@ ALLOWED_PATCH_FIELDS = {
         "source_trace",
     },
     ArtifactType.VALIDATION_REPORT.value: {
+        "overall_status",
+        "score",
+        "checks",
+        "next_actions",
         "validation_status",
         "warnings",
         "blockers",
