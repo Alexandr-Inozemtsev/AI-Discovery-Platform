@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "corporate-confluence": {
+      "transport": "http",
+      "url": "{env:CONFLUENCE_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer {env:CORP_MCP_TOKEN}"
+      },
+      "allowedTools": ["confluence.search", "confluence.read"],
+      "readOnly": true
+    },
+    "corporate-jira": {
+      "transport": "http",
+      "url": "{env:JIRA_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer {env:CORP_MCP_TOKEN}"
+      },
+      "allowedTools": ["jira.search", "jira.read"],
+      "readOnly": true
+    }
+  }
+}
