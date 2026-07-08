@@ -11,17 +11,23 @@ from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as discovery_repo
 
 
-AI_CHAT_APPLY_ARTIFACT_ALLOWLIST = {
-    ArtifactType.PROBLEM.value,
-    ArtifactType.GOAL.value,
-    ArtifactType.BUSINESS_EFFECT.value,
-    ArtifactType.USE_CASES.value,
-    ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
-    ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value,
-    ArtifactType.FINAL_BT.value,
-}
-
-AI_CHAT_PATCH_FIELD_ALLOWLIST = {
+ALLOWED_PATCH_FIELDS = {
+    ArtifactType.CONTEXT.value: {
+        "context_input",
+        "documents",
+        "uploaded_files",
+        "links",
+        "extracted_knowledge",
+        "source_trace",
+        "coverage",
+        "readiness",
+        "overview_for_ai",
+        "problem_handoff",
+        "knowledge_history",
+        "indexing_status",
+        "indexed_at",
+        "uploaded_at",
+    },
     ArtifactType.PROBLEM.value: {
         "problem_statement",
         "pains",
@@ -94,7 +100,31 @@ AI_CHAT_PATCH_FIELD_ALLOWLIST = {
         "open_questions",
         "source_trace",
     },
+    ArtifactType.RISKS.value: {
+        "risks",
+        "risk_register",
+        "mitigations",
+        "owners",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.VALIDATION_REPORT.value: {
+        "validation_status",
+        "warnings",
+        "blockers",
+        "checked_artifacts",
+        "quality_gates",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
 }
+
+AI_CHAT_APPLY_ARTIFACT_ALLOWLIST = set(ALLOWED_PATCH_FIELDS.keys())
+AI_CHAT_PATCH_FIELD_ALLOWLIST = ALLOWED_PATCH_FIELDS
 
 
 def build_patch_audit_summary(patch: dict | None) -> dict:
@@ -157,7 +187,7 @@ class ApplyPatchService:
             raise api_error(
                 400,
                 "VALIDATION_ERROR",
-                "Patch содержит поля, запрещённые для этого типа артефакта.",
+                "Patch содержит недопустимые поля для этого артефакта.",
                 {"forbidden_fields": forbidden_fields},
             )
         previous = discovery_repo.get_artifact(db, project_id, artifact_type)
@@ -167,7 +197,7 @@ class ApplyPatchService:
             raise api_error(
                 409,
                 "VERSION_CONFLICT",
-                "Артефакт изменился после preview. Обновите preview и попробуйте снова.",
+                "Артефакт изменился после подготовки patch. Обновите preview.",
                 {"expected_version": expected_version, "current_version": current_version},
             )
         structured = dict(previous.structured_content or {}) if previous else {}

@@ -907,26 +907,37 @@ def assistant_apply_patch(project_id: str, payload: AssistantApplyPatchRequest, 
 
 @router.post('/projects/{project_id}/assistant/reject-action')
 def assistant_reject_action(project_id: str, payload: AssistantRejectActionRequest, db: Session = Depends(get_db)):
+    if not payload.action_id:
+        raise api_error(400, 'VALIDATION_ERROR', 'Укажите действие AI-чата для отклонения.')
+    return _reject_assistant_action(project_id, payload.session_id, payload.action_id, payload.reason, db)
+
+
+@router.post('/projects/{project_id}/assistant/actions/{action_id}/reject')
+def assistant_reject_action_by_path(project_id: str, action_id: str, payload: AssistantRejectActionRequest, db: Session = Depends(get_db)):
+    return _reject_assistant_action(project_id, payload.session_id, action_id, payload.reason, db)
+
+
+def _reject_assistant_action(project_id: str, session_id: str, action_id: str, reason: str, db: Session):
     project = repo.get_project(db, project_id)
     if not project:
         raise api_error(404, 'PROJECT_NOT_FOUND')
-    action = assistant_repo.get_action(db, project_id, payload.session_id, payload.action_id)
+    action = assistant_repo.get_action(db, project_id, session_id, action_id)
     if not action:
         raise api_error(404, 'ARTIFACT_NOT_FOUND', 'Действие AI-чата не найдено.')
     if action.status not in {'proposed', 'previewed'}:
         raise api_error(400, 'VALIDATION_ERROR', 'Действие нельзя отклонить в текущем статусе.')
     result = dict(action.result or {})
-    if payload.reason:
-        result['reject_reason'] = payload.reason
+    if reason:
+        result['reject_reason'] = reason
     updated_action = assistant_repo.update_action(db, action, status='rejected', result=result)
     assistant_repo.add_tool_run(
         db,
         project_id=project_id,
-        session_id=payload.session_id,
-        action_id=payload.action_id,
+        session_id=session_id,
+        action_id=action_id,
         tool_name='patch.reject',
         status='success',
-        input_json={'action_id': payload.action_id, 'has_reason': bool(payload.reason)},
+        input_json={'action_id': action_id, 'has_reason': bool(reason)},
         output_json={'status': 'rejected'},
     )
     return {'ok': True, 'action': _serialize_assistant_action(updated_action)}

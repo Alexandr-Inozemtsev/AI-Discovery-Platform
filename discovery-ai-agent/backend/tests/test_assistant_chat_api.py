@@ -248,8 +248,37 @@ def test_assistant_apply_patch_rejects_unknown_fields_for_artifact_type():
 
     assert exc.value.status_code == 400
     assert exc.value.detail["error_code"] == "VALIDATION_ERROR"
-    assert exc.value.detail["human_message"] == "Patch содержит поля, запрещённые для этого типа артефакта."
+    assert exc.value.detail["human_message"] == "Patch содержит недопустимые поля для этого артефакта."
     assert exc.value.detail["details"]["forbidden_fields"] == ["unexpected_admin_field"]
+
+
+def test_assistant_apply_patch_rejects_forbidden_direct_content_field():
+    db = _session()
+    project = _create_project(db)
+    session = assistant_repo.create_session(db, project.id)
+    action = assistant_repo.add_action(
+        db,
+        project_id=project.id,
+        session_id=session.id,
+        message_id=None,
+        action_type="proposed_patch",
+        target_artifact_type=ArtifactType.PROBLEM.value,
+        proposed_patch={"problem_statement": "Проблема есть", "content": "Прямая перезапись content запрещена"},
+        preview={"changed_fields": ["problem_statement", "content"]},
+        action_metadata={"base_artifact_version": 0},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error_code"] == "VALIDATION_ERROR"
+    assert exc.value.detail["human_message"] == "Patch содержит недопустимые поля для этого артефакта."
+    assert exc.value.detail["details"]["forbidden_fields"] == ["content"]
 
 
 def test_assistant_apply_patch_rejects_double_apply():
@@ -270,7 +299,7 @@ def test_assistant_apply_patch_rejects_double_apply():
     assert exc.value.detail["human_message"] == "Patch уже применён."
 
 
-def test_assistant_apply_patch_rejects_artifact_type_outside_chat_allowlist():
+def test_assistant_apply_patch_allows_context_fields_from_allowlist():
     db = _session()
     project = _create_project(db)
     session = assistant_repo.create_session(db, project.id)
@@ -281,19 +310,20 @@ def test_assistant_apply_patch_rejects_artifact_type_outside_chat_allowlist():
         message_id=None,
         action_type="proposed_patch",
         target_artifact_type=ArtifactType.CONTEXT.value,
-        proposed_patch={"content": "AI Chat не должен обновлять context напрямую."},
-        preview={"changed_fields": ["content"]},
+        proposed_patch={"readiness": {"status": "ready"}, "source_trace": []},
+        preview={"changed_fields": ["readiness"]},
+        action_metadata={"base_artifact_version": 0},
     )
 
-    with pytest.raises(HTTPException) as exc:
-        discovery.assistant_apply_patch(
-            project.id,
-            discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
-            db=db,
-        )
+    payload = discovery.assistant_apply_patch(
+        project.id,
+        discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
+        db=db,
+    )
 
-    assert exc.value.status_code == 403
-    assert exc.value.detail["human_message"] == "AI Chat не может применять patch к этому типу артефакта."
+    assert payload["ok"] is True
+    assert payload["artifact"]["artifact_type"] == ArtifactType.CONTEXT
+    assert payload["artifact"]["structured_content"]["readiness"]["status"] == "ready"
 
 
 def test_assistant_apply_patch_rejects_version_conflict():
@@ -335,7 +365,7 @@ def test_assistant_apply_patch_rejects_version_conflict():
 
     assert exc.value.status_code == 409
     assert exc.value.detail["error_code"] == "VERSION_CONFLICT"
-    assert exc.value.detail["human_message"] == "Артефакт изменился после preview. Обновите preview и попробуйте снова."
+    assert exc.value.detail["human_message"] == "Артефакт изменился после подготовки patch. Обновите preview."
 
 
 def test_assistant_reject_action_endpoint_marks_proposed_patch_rejected():
@@ -355,6 +385,36 @@ def test_assistant_reject_action_endpoint_marks_proposed_patch_rejected():
 
     assert payload["ok"] is True
     assert payload["action"]["status"] == "rejected"
+
+
+def test_assistant_reject_action_path_endpoint_marks_action_rejected_and_blocks_apply():
+    db = _session()
+    project = _create_project(db)
+    chat = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="Проблема: ручной процесс.", artifact_type=ArtifactType.PROBLEM),
+        db=db,
+    )
+
+    payload = discovery.assistant_reject_action_by_path(
+        project.id,
+        chat["action"]["id"],
+        discovery.AssistantRejectActionRequest(session_id=chat["session_id"], reason="Не подходит"),
+        db=db,
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"]["status"] == "rejected"
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=chat["session_id"], action_id=chat["action"]["id"]),
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["human_message"] == "Patch нельзя применить в текущем статусе."
 
 
 def test_llm_settings_serializer_does_not_expose_raw_provider_error_details():

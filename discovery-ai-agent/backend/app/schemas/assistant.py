@@ -27,7 +27,7 @@ class AssistantApplyPatchRequest(BaseModel):
 
 class AssistantRejectActionRequest(BaseModel):
     session_id: str
-    action_id: str
+    action_id: str | None = None
     reason: str = ""
 
 
