@@ -8,6 +8,8 @@ AI Discovery Platform использует глобального `ai-designer` 
 - [Design system](design-system.md) - tokens, компоненты и состояния.
 - [Screen inventory](screen-inventory.md) - список экранов и ожидаемые сценарии.
 - [Context screen spec](context-screen-spec.md) - подробная спецификация страницы Контекст.
+- [Chat-first Discovery workflow](ux-flows/chat-first-discovery-workflow.md) - UX-flow управления Discovery через AI Chat.
+- [Chat-first Discovery Workspace](screens/chat-first-discovery-workspace.md) - screen spec нового Project Workspace и этапов.
 - [Management presentation visual style](management-presentation-visual-style.md) - визуальный стиль презентации для руководства.
 - [ai-designer workflow](ai-designer-workflow.md) - правила работы глобального `ai-ui-ux-designer`.
 
