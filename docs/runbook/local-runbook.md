@@ -39,6 +39,17 @@ SQLite файл:
 C:\Projects\AI-Discovery-Platform\discovery-ai-agent\backend\data\discovery_agent.db
 ```
 
+## Repository hygiene
+
+Перед release и перед подготовкой commit проверьте, что локальные артефакты и secrets не попали в git index:
+
+```powershell
+cd C:\Projects\AI-Discovery-Platform
+powershell -ExecutionPolicy Bypass -File scripts/check-repo-hygiene.ps1
+```
+
+Проверка должна завершиться без нарушений. Если найдены `node_modules/`, `.venv/`, `.env`, `__pycache__/`, `*.pyc`, credentials, cookies или token files, удалите их из git index через `git rm --cached`, не удаляя локальные файлы с диска.
+
 ## Очистка локальных данных
 
 1. Остановите backend и frontend.
