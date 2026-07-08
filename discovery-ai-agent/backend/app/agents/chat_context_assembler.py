@@ -1,0 +1,96 @@
+import json
+from dataclasses import asdict, is_dataclass
+from typing import Any
+
+from app.models.discovery import ArtifactType
+from app.rag.simple_retriever import RetrievalResult
+
+
+class ChatContextAssembler:
+    def __init__(self, max_chars: int = 12000):
+        self.max_chars = max_chars
+
+    def assemble(
+        self,
+        *,
+        project: Any,
+        artifact_type: ArtifactType,
+        message: str,
+        context_artifact: dict[str, Any] | None,
+        artifacts: dict[str, Any],
+        retrieval_result: RetrievalResult,
+    ) -> dict[str, Any]:
+        evidence = [chunk.to_dict() for chunk in retrieval_result.chunks]
+        open_questions: list[str] = []
+        assumptions: list[str] = []
+        if not evidence:
+            open_questions.append("Нет подтверждённых evidence для запроса; нужно уточнить источники или добавить данные.")
+            assumptions.append("Выводы без retrieved chunks должны быть помечены как предположения.")
+
+        source_trace = retrieval_result.source_trace
+        payload = {
+            "project_snapshot": self._project_snapshot(project),
+            "artifact_type": artifact_type.value,
+            "message": message,
+            "artifact_summaries": self._artifact_summaries(artifacts),
+            "retrieved_chunks": evidence,
+            "source_trace": source_trace,
+            "context_readiness": (context_artifact or {}).get("readiness") or (context_artifact or {}).get("extracted_knowledge", {}).get("readiness") or {},
+            "retrieval_warnings": retrieval_result.warnings,
+            "assumptions": assumptions,
+            "open_questions": open_questions,
+            "data_policy": "Полный корпус документов не передаётся в LLM; используются только top-k chunks и ручной контекст.",
+        }
+        prompt_context = self._truncate(json.dumps(payload, ensure_ascii=False, indent=2), self.max_chars)
+        return {
+            **payload,
+            "prompt_context": prompt_context,
+            "evidence": evidence,
+            "token_budget": {
+                "max_chars": self.max_chars,
+                "used_chars": len(prompt_context),
+                "truncated": len(prompt_context) >= self.max_chars and len(json.dumps(payload, ensure_ascii=False)) > self.max_chars,
+            },
+        }
+
+    def _project_snapshot(self, project: Any) -> dict[str, Any]:
+        return {
+            "id": getattr(project, "id", None),
+            "project_name": getattr(project, "project_name", ""),
+            "business_domain": getattr(project, "business_domain", None),
+            "current_stage": str(getattr(project, "current_stage", "") or ""),
+        }
+
+    def _artifact_summaries(self, artifacts: dict[str, Any]) -> dict[str, Any]:
+        summaries: dict[str, Any] = {}
+        for key, value in artifacts.items():
+            if hasattr(value, "artifact_type"):
+                summaries[str(key)] = {
+                    "artifact_type": getattr(value.artifact_type, "value", value.artifact_type),
+                    "version": getattr(value, "version", None),
+                    "content": self._truncate(str(getattr(value, "content", "") or ""), 1200),
+                    "structured_keys": list((getattr(value, "structured_content", None) or {}).keys())[:30],
+                }
+            elif isinstance(value, dict):
+                summaries[str(key)] = {
+                    "version": value.get("version"),
+                    "content": self._truncate(str(value.get("content") or ""), 1200),
+                    "structured_keys": list((value.get("structured_content") or {}).keys())[:30],
+                }
+            else:
+                summaries[str(key)] = self._truncate(str(value or ""), 1200)
+        return summaries
+
+    def _truncate(self, value: str, max_chars: int) -> str:
+        value = value or ""
+        if len(value) <= max_chars:
+            return value
+        return value[: max(0, max_chars - 14)] + "...[truncated]"
+
+
+def to_plain_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if is_dataclass(value):
+        return asdict(value)
+    return {}

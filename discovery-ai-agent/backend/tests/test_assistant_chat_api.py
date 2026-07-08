@@ -102,3 +102,48 @@ def test_assistant_chat_unknown_project_returns_error_envelope():
     assert payload["ok"] is False
     assert payload["error_code"] == "PROJECT_NOT_FOUND"
     assert payload["human_message"] == "Проект не найден."
+
+
+def test_assistant_chat_uses_context_retrieval_and_propagates_evidence():
+    db = _session()
+    project = _create_project(db)
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.CONTEXT,
+        "",
+        structured_content={
+            "uploaded_files": [
+                {
+                    "id": "doc_1",
+                    "name": "context.md",
+                    "text_extraction_status": "completed",
+                    "chunks": [
+                        {"id": "chunk_1", "text": "Клиенты жалуются на задержки пролонгации ИБС.", "order": 0}
+                    ],
+                },
+                {"id": "doc_meta", "name": "scan.pdf", "text_extraction_status": "not_available"},
+            ],
+            "source_trace": [
+                {"source_id": "doc_1", "source_type": "document", "source_name": "context.md", "used": True, "content_level": "chunks"},
+                {"source_id": "doc_meta", "source_type": "document", "source_name": "scan.pdf", "used": False, "content_level": "metadata_only"},
+            ],
+        },
+    )
+
+    payload = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(
+            message="@problem сформулируй проблему задержки пролонгации",
+        ),
+        db=db,
+    )
+
+    metadata = payload["action"]["metadata"]
+    preview = payload["action"]["preview"]
+
+    assert payload["action"]["target_artifact_type"] == "PROBLEM"
+    assert metadata["retrieval"]["chunks"][0]["source_id"] == "doc_1"
+    assert metadata["evidence"][0]["chunk_id"] == "chunk_1"
+    assert "doc_meta" not in {row.get("source_id") for row in metadata["evidence"]}
+    assert preview["evidence_count"] == 1

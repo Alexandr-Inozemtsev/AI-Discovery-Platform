@@ -220,6 +220,10 @@ Requirements stage должен получать:
 
 Adapters допускаются только после стабилизации `SimpleRetriever` и внутреннего retrieval contract.
 
+## Corporate Tool Gateway boundary
+
+Требования к будущей MCP/MSP границе вынесены в отдельный документ: [Corporate Tool Gateway: MCP/MSP boundary requirements](corporate-tool-gateway-boundary.md). Ключевое правило: gateway может возвращать только evidence-safe chunks и diagnostics, но не управляет Discovery workflow и не пишет напрямую в `discovery_artifacts`.
+
 ### Adapter boundary
 
 Внешний framework может владеть только внутренней реализацией поиска, indexing или reranking. Он не должен владеть:

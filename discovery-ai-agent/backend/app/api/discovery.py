@@ -772,11 +772,16 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
         payload={'artifact_type': payload.artifact_type.value if payload.artifact_type else None},
     )
     orchestrator = DiscoveryChatOrchestrator()
+    artifacts = {artifact.artifact_type.value: artifact for artifact in repo.list_artifacts(db, project_id)}
+    context_artifact_row = artifacts.get(ArtifactType.CONTEXT.value)
+    context_artifact = context_artifact_row.structured_content if context_artifact_row else {}
     orchestration = orchestrator.handle_message(
         project=project,
         message=payload.message,
         artifact_type=payload.artifact_type,
         context=payload.context,
+        context_artifact=context_artifact or {},
+        artifacts=artifacts,
     )
     result = orchestration['result']
     intent = orchestration['intent']
