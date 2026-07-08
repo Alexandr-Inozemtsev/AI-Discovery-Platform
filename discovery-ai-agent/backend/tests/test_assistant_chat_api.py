@@ -52,7 +52,8 @@ def test_assistant_chat_creates_session_messages_and_proposed_patch_without_appl
     assert payload["action"]["target_artifact_type"] == "PROBLEM"
     assert payload["action"]["proposed_patch"]["problem_statement"]
     assert "problem_statement" in payload["preview"]["changed_fields"]
-    assert "pains" in payload["preview"]["changed_fields"]
+    assert "user_pains" in payload["preview"]["changed_fields"]
+    assert "business_pains" in payload["preview"]["changed_fields"]
     assert discovery_repo.get_artifact(db, project.id, ArtifactType.PROBLEM) is None
 
     sessions = discovery.get_assistant_sessions(project.id, db=db)
