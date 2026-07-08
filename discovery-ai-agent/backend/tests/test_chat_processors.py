@@ -210,12 +210,179 @@ def test_requirements_processor_builds_fr_nfr_and_final_bt_patches():
     nfr = processor.process(_request(ArtifactType.NON_FUNCTIONAL_REQUIREMENTS, "НФТ: ответ проверки до 3 секунд"))
     final_bt = processor.process(_request(ArtifactType.FINAL_BT, "Финальный БТ: подготовь документ по пролонгации"))
 
-    assert fr.proposed_patch["functional_requirements"][0]["title"] == "система проверяет договор автоматически"
+    assert fr.proposed_patch["functional_requirements"][0]["text"] == "система проверяет договор автоматически"
     assert fr.proposed_patch["functional_requirements"][0]["acceptance_criteria"]
-    assert nfr.proposed_patch["non_functional_requirements"][0]["quality_attribute"]
-    assert nfr.proposed_patch["non_functional_requirements"][0]["target"]
-    assert final_bt.proposed_patch["document_preview"]["title"]
-    assert final_bt.proposed_patch["validation_warnings"]
+    assert nfr.proposed_patch["non_functional_requirements"][0]["category"]
+    assert nfr.proposed_patch["non_functional_requirements"][0]["target_value"]
+    assert final_bt.proposed_patch["sections"]
+    assert final_bt.proposed_patch["validation_summary"]
+
+
+def test_requirements_processor_generates_fr_from_use_cases_with_required_contract():
+    processor = RequirementsProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
+        stage_type=ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
+        project_snapshot={"project_name": "ИБС"},
+        input_artifacts={
+            ArtifactType.PROBLEM.value: {"structured_content": {"problem_statement": "Ручная проверка задерживает клиента"}},
+            ArtifactType.GOAL.value: {"structured_content": {"desired_outcome": "Сократить ручную проверку"}},
+            ArtifactType.USE_CASES.value: {
+                "structured_content": {
+                    "use_cases": [
+                        {
+                            "id": "UC-001",
+                            "title": "Менеджер проверяет договор",
+                            "goal": "Проверить договор автоматически",
+                        }
+                    ]
+                }
+            },
+        },
+        retrieval_result={
+            "chunks": [
+                {
+                    "source_id": "doc_1",
+                    "chunk_id": "c1",
+                    "source_name": "brief.md",
+                    "text": "Менеджер должен видеть результат автоматической проверки договора.",
+                }
+            ],
+            "source_trace": [{"source_id": "doc_1", "chunk_id": "c1", "used": True}],
+        },
+        metadata={"message": "Требование: система проверяет договор автоматически"},
+    )
+
+    result = processor.process(request)
+    requirement = result.proposed_patch["functional_requirements"][0]
+
+    assert result.ok is True
+    assert result.requires_apply_step() is True
+    assert requirement == {
+        "id": "FR-001",
+        "text": "система проверяет договор автоматически",
+        "priority": "MUST",
+        "linked_use_case": "UC-001",
+        "acceptance_criteria": ["Результат автоматической проверки договора доступен пользователю процесса."],
+        "business_rules": ["Требование должно быть связано с подтверждённой проблемой, целью или use case."],
+        "evidence": result.evidence,
+        "assumption": False,
+        "open_questions": [],
+    }
+    assert result.metadata["prompt_version"] == "functional_requirements.v1"
+
+
+def test_requirements_processor_marks_requirement_without_evidence_as_assumption():
+    processor = RequirementsProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value,
+        stage_type=ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value,
+        project_snapshot={"project_name": "ИБС"},
+        input_artifacts={
+            ArtifactType.PROBLEM.value: {"structured_content": {"problem_statement": "Ручной процесс"}},
+            ArtifactType.GOAL.value: {"structured_content": {"desired_outcome": "Ускорить проверку"}},
+        },
+        retrieval_result={"chunks": [], "source_trace": []},
+        metadata={"message": "НФТ: ответ проверки до 3 секунд"},
+    )
+
+    result = processor.process(request)
+    requirement = result.proposed_patch["non_functional_requirements"][0]
+
+    assert requirement["id"] == "NFR-001"
+    assert requirement["category"] == "performance"
+    assert requirement["text"] == "ответ проверки до 3 секунд"
+    assert requirement["target_value"] == "до 3 секунд"
+    assert requirement["evidence"] == []
+    assert requirement["assumption"] is True
+    assert result.assumptions
+    assert result.open_questions
+    assert result.warnings
+
+
+def test_requirements_processor_preserves_stable_ids_on_update():
+    processor = RequirementsProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
+        stage_type=ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
+        input_artifacts={
+            ArtifactType.PROBLEM.value: {"structured_content": {"problem_statement": "Ручной процесс"}},
+            ArtifactType.GOAL.value: {"structured_content": {"desired_outcome": "Ускорить проверку"}},
+            ArtifactType.USE_CASES.value: {
+                "structured_content": {"use_cases": [{"id": "UC-001", "title": "Проверить договор"}]}
+            },
+            ArtifactType.FUNCTIONAL_REQUIREMENTS.value: {
+                "structured_content": {
+                    "functional_requirements": [
+                        {
+                            "id": "FR-007",
+                            "text": "система проверяет договор автоматически",
+                            "linked_use_case": "UC-001",
+                        }
+                    ]
+                }
+            },
+        },
+        retrieval_result={
+            "chunks": [{"source_id": "doc_1", "chunk_id": "c1", "text": "Система проверяет договор автоматически."}],
+            "source_trace": [{"source_id": "doc_1", "chunk_id": "c1"}],
+        },
+        metadata={"message": "Требование: система проверяет договор автоматически"},
+    )
+
+    result = processor.process(request)
+
+    assert result.proposed_patch["functional_requirements"][0]["id"] == "FR-007"
+
+
+def test_requirements_processor_final_bt_includes_validation_warnings_and_unresolved_questions():
+    processor = RequirementsProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.FINAL_BT.value,
+        stage_type=ArtifactType.FINAL_BT.value,
+        project_snapshot={"project_name": "ИБС"},
+        input_artifacts={
+            ArtifactType.CONTEXT.value: {"content": "Контекст проекта", "structured_content": {"open_questions": ["Уточнить источник данных"]}},
+            ArtifactType.PROBLEM.value: {"content": "Проблема ручной проверки", "structured_content": {"open_questions": ["Кто владелец процесса?"]}},
+            ArtifactType.GOAL.value: {"content": "Цель сократить проверку", "structured_content": {}},
+            ArtifactType.BUSINESS_EFFECT.value: {"content": "Снижение задержек", "structured_content": {}},
+            ArtifactType.USE_CASES.value: {"content": "UC-001 Проверить договор", "structured_content": {}},
+            ArtifactType.FUNCTIONAL_REQUIREMENTS.value: {"content": "FR-001 Система проверяет договор", "structured_content": {}},
+            ArtifactType.VALIDATION_REPORT.value: {
+                "structured_content": {
+                    "warnings": ["Не хватает evidence по NFR"],
+                    "blockers": ["Не заполнены риски"],
+                }
+            },
+        },
+        retrieval_result={
+            "chunks": [{"source_id": "doc_1", "chunk_id": "c1", "text": "Финальный документ должен включать unresolved вопросы."}],
+            "source_trace": [{"source_id": "doc_1", "chunk_id": "c1"}],
+        },
+        metadata={"message": "Финальный БТ: собрать документ"},
+    )
+
+    result = processor.process(request)
+    patch = result.proposed_patch
+
+    assert [section["id"] for section in patch["sections"]] == [
+        "context",
+        "problem",
+        "goal",
+        "business_effect",
+        "use_cases",
+        "requirements",
+    ]
+    assert patch["validation_summary"]["warnings"] == ["Не хватает evidence по NFR"]
+    assert patch["validation_summary"]["blockers"] == ["Не заполнены риски"]
+    assert "Уточнить источник данных" in patch["unresolved_questions"]
+    assert "Кто владелец процесса?" in patch["unresolved_questions"]
+    assert patch["evidence_summary"]
+    assert result.requires_apply_step() is True
 
 
 def test_discovery_chat_orchestrator_uses_stage_processors_for_structured_patches():

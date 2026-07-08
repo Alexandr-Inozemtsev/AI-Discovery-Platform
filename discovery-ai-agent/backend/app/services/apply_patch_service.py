@@ -102,6 +102,10 @@ ALLOWED_PATCH_FIELDS = {
     },
     ArtifactType.FINAL_BT.value: {
         "document_preview",
+        "sections",
+        "validation_summary",
+        "unresolved_questions",
+        "evidence_summary",
         "validation_warnings",
         "export",
         "evidence",
