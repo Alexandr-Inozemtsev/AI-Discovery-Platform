@@ -223,6 +223,53 @@ def test_assistant_apply_patch_rejects_rejected_or_failed_actions():
     assert exc.value.detail["human_message"] == "Patch нельзя применить в текущем статусе."
 
 
+def test_assistant_apply_patch_rejects_unknown_fields_for_artifact_type():
+    db = _session()
+    project = _create_project(db)
+    session = assistant_repo.create_session(db, project.id)
+    action = assistant_repo.add_action(
+        db,
+        project_id=project.id,
+        session_id=session.id,
+        message_id=None,
+        action_type="proposed_patch",
+        target_artifact_type=ArtifactType.PROBLEM.value,
+        proposed_patch={"problem_statement": "Проблема есть", "unexpected_admin_field": "forbidden"},
+        preview={"changed_fields": ["problem_statement", "unexpected_admin_field"]},
+        action_metadata={"base_artifact_version": 0},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error_code"] == "VALIDATION_ERROR"
+    assert exc.value.detail["human_message"] == "Patch содержит поля, запрещённые для этого типа артефакта."
+    assert exc.value.detail["details"]["forbidden_fields"] == ["unexpected_admin_field"]
+
+
+def test_assistant_apply_patch_rejects_double_apply():
+    db = _session()
+    project = _create_project(db)
+    chat = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="Проблема: ручной процесс.", artifact_type=ArtifactType.PROBLEM),
+        db=db,
+    )
+    request = discovery.AssistantApplyPatchRequest(session_id=chat["session_id"], action_id=chat["action"]["id"])
+    discovery.assistant_apply_patch(project.id, request, db=db)
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(project.id, request, db=db)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["human_message"] == "Patch уже применён."
+
+
 def test_assistant_apply_patch_rejects_artifact_type_outside_chat_allowlist():
     db = _session()
     project = _create_project(db)

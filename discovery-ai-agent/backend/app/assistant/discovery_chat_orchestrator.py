@@ -92,9 +92,6 @@ class DiscoveryChatOrchestrator:
             retrieval_result=retrieval_result,
         )
 
-        evidence = assembled_context["evidence"]
-        assumptions = list(assembled_context["assumptions"])
-        open_questions = list(assembled_context["open_questions"])
         stage_processor = processor_for_artifact(artifact_type)
         if stage_processor:
             processor_result = stage_processor.process(
@@ -129,22 +126,19 @@ class DiscoveryChatOrchestrator:
             }
             return processor_result
 
-        proposed_patch = self._build_proposed_patch(artifact_type, message, evidence, assumptions, open_questions)
-        changed_fields = [field for field in proposed_patch.keys() if field not in {"evidence", "assumptions", "open_questions"}]
-        preview = {"target_artifact_type": artifact_type.value, "changed_fields": changed_fields, "summary": f"Будут изменены поля: {', '.join(changed_fields)}.", "evidence_count": len(evidence), "warnings": retrieval_result.warnings}
         return StageProcessorResult(
             ok=True,
             artifact_type=artifact_type.value,
-            content=self._content_from_patch(artifact_type, proposed_patch),
-            structured_content=proposed_patch,
-            proposed_patch=proposed_patch,
-            preview=preview,
-            evidence=evidence,
-            assumptions=assumptions,
-            open_questions=open_questions,
+            content="",
+            structured_content={},
+            proposed_patch={},
+            preview={},
+            evidence=assembled_context["evidence"],
+            assumptions=list(assembled_context["assumptions"]),
+            open_questions=list(assembled_context["open_questions"]),
             source_trace=retrieval_result.source_trace,
             warnings=retrieval_result.warnings,
-            human_message="Я подготовил черновик изменения. Проверьте preview перед применением.",
+            human_message="Для этого этапа AI Chat пока не формирует patch. Я могу показать состояние или предложить уточняющие вопросы.",
             metadata={
                 "intent_type": intent.intent_type,
                 "confidence": intent.confidence,
@@ -154,40 +148,13 @@ class DiscoveryChatOrchestrator:
                 "project_id": project.id,
                 "source": "ai_discovery_chat",
                 "retrieval": retrieval_result.to_dict(),
-                "evidence": evidence,
-                "assumptions": assumptions,
-                "open_questions": open_questions,
+                "evidence": assembled_context["evidence"],
+                "assumptions": assembled_context["assumptions"],
+                "open_questions": assembled_context["open_questions"],
                 "token_budget": assembled_context["token_budget"],
                 "data_policy": assembled_context["data_policy"],
             },
         )
-
-    def _build_proposed_patch(
-        self,
-        artifact_type: ArtifactType,
-        message: str,
-        evidence: list[dict],
-        assumptions: list[str],
-        open_questions: list[str],
-    ) -> dict:
-        clean_message = self._clean_message(message)
-        grounding = {
-            "evidence": evidence,
-            "assumptions": assumptions,
-            "open_questions": open_questions,
-        }
-        if artifact_type == ArtifactType.PROBLEM:
-            return {"problem_statement": clean_message, **grounding}
-        if artifact_type == ArtifactType.GOAL:
-            return {"desired_outcome": clean_message, **grounding}
-        return {"content": clean_message, **grounding}
-
-    def _content_from_patch(self, artifact_type: ArtifactType, proposed_patch: dict) -> str:
-        if artifact_type == ArtifactType.PROBLEM:
-            return str(proposed_patch.get("problem_statement") or "")
-        if artifact_type == ArtifactType.GOAL:
-            return str(proposed_patch.get("desired_outcome") or "")
-        return str(proposed_patch.get("content") or "")
 
     def _clean_message(self, message: str) -> str:
         text = (message or "").strip()

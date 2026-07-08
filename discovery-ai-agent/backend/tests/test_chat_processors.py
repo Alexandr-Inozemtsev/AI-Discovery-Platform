@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.agents.runtime import StageProcessorRequest
 from app.assistant.discovery_chat_orchestrator import DiscoveryChatOrchestrator
-from app.assistant.processors import RequirementsProcessor, StageDraftProcessor
+from app.assistant.processors import RequirementsProcessor, StageDraftProcessor, ValidationProcessor
 from app.models.discovery import ArtifactType
 
 
@@ -80,3 +80,43 @@ def test_discovery_chat_orchestrator_uses_stage_processors_for_structured_patche
     assert result.artifact_type == ArtifactType.BUSINESS_EFFECT.value
     assert "qualitative_effect" in result.proposed_patch
     assert "content" not in result.proposed_patch
+
+
+def test_validation_processor_builds_validation_report_without_applying_patch():
+    processor = ValidationProcessor()
+    request = StageProcessorRequest(
+        project_id="project_1",
+        artifact_type=ArtifactType.VALIDATION_REPORT.value,
+        stage_type=ArtifactType.VALIDATION_REPORT.value,
+        input_artifacts={
+            "PROBLEM": {"version": 1, "structured_keys": ["problem_statement"]},
+            "GOAL": {"version": 1, "structured_keys": []},
+            "FUNCTIONAL_REQUIREMENTS": {"version": 1, "structured_keys": []},
+        },
+        metadata={"message": "@critic проверь качество"},
+    )
+
+    result = processor.process(request)
+
+    assert result.ok is True
+    assert result.artifact_type == ArtifactType.VALIDATION_REPORT.value
+    assert result.proposed_patch == {}
+    assert result.structured_content["validation_status"] == "requires_attention"
+    assert result.structured_content["warnings"]
+    assert "проверил" in result.human_message.lower()
+
+
+def test_orchestrator_does_not_build_domain_patch_without_processor():
+    orchestrator = DiscoveryChatOrchestrator()
+
+    result = orchestrator.handle_message(
+        project=SimpleNamespace(id="project_1", project_name="ИБС", business_domain="Банк"),
+        message="@context найди gaps",
+        artifact_type=None,
+        context_artifact={},
+        artifacts={},
+    )["result"]
+
+    assert result.artifact_type == ArtifactType.CONTEXT.value
+    assert result.proposed_patch == {}
+    assert result.human_message == "Для этого этапа AI Chat пока не формирует patch. Я могу показать состояние или предложить уточняющие вопросы."

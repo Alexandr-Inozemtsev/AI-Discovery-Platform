@@ -34,7 +34,13 @@
 
 ## `StageProcessorRequest` и `StageProcessorResult`
 
-Для chat-first UX вводится отдельный контракт stage processors. Он не заменяет `AgentResult`; он задает границу для будущих `StageDraftProcessor`, `RequirementsProcessor` и Chat Orchestrator.
+Для chat-first UX вводится отдельный контракт stage processors. Он не заменяет `AgentResult`; он задает границу для `StageDraftProcessor`, `RequirementsProcessor`, `ValidationProcessor` и Chat Orchestrator.
+
+Физические границы runtime:
+
+- `discovery-ai-agent/backend/app/assistant/` - application service слой AI Discovery Chat: `DiscoveryChatOrchestrator`, `IntentRouter`, `ChatContextAssembler`, prompt templates и chat processors.
+- `discovery-ai-agent/backend/app/agents/` - Product AI Agents и общий agent runtime. Chat Orchestrator не должен находиться в этом пакете.
+- `discovery-ai-agent/backend/app/corporate/` - Corporate Tool Gateway / CorporateSource boundary для read-only MCP/MSP adapters.
 
 `StageProcessorRequest`:
 
@@ -81,6 +87,8 @@
 - `proposed_patch` не применяется автоматически;
 - запись в `discovery_artifacts` допускается только после preview и apply step;
 - raw LLM response не отдаётся frontend payload без отдельной redaction policy.
+- Chat Orchestrator не формирует domain patch из текста пользователя самостоятельно; он делегирует `StageProcessorRequest` специализированному processor.
+- Если processor для artifact type не подключён, Chat Orchestrator возвращает русское сообщение без `proposed_patch`.
 
 ## `ToolPolicy` для AI Discovery Chat
 
@@ -91,6 +99,15 @@
 - deny: `discovery_artifacts.write`, `credential.read`, `llm_settings.write_secret`, `prompt.raw_log`.
 
 Это фиксирует правило: AI Discovery Chat может подготовить изменение, объяснить его и показать preview, но не может напрямую менять structured state артефакта.
+
+`ApplyPatchService` является отдельным security layer:
+
+- проверяет `project_id`, `session_id`, `action_id`, `action_type` и статус action;
+- разрешает apply только для allowlist artifact types;
+- проверяет allowlist полей по artifact type и отклоняет неизвестные поля;
+- проверяет `base_artifact_version` против текущей версии артефакта;
+- блокирует повторный apply и rejected/failed actions;
+- пишет в audit только безопасную сводку patch, а не полный текст corporate evidence.
 
 ## Fallback
 

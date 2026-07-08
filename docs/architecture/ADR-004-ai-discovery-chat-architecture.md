@@ -27,6 +27,10 @@ user message -> Chat Orchestrator -> StageProcessorRequest -> StageProcessorResu
 - Chat Orchestrator управляет намерением пользователя, чтением state, выбором stage processor, генерацией proposed patch, preview и apply gate.
 - Stage processors возвращают `StageProcessorResult`, а не пишут в БД напрямую.
 - Apply step выполняет backend application service после явного действия пользователя или подтвержденного UI command.
+- Chat-specific application service код находится в `discovery-ai-agent/backend/app/assistant/`.
+- Product AI Agents остаются в `discovery-ai-agent/backend/app/agents/`; chat orchestration не должен располагаться в этом пакете.
+- Chat Orchestrator не строит domain patch самостоятельно: он маршрутизирует intent, собирает context, проверяет `ToolPolicy` и делегирует stage-specific результат processors.
+- Corporate Tool Gateway/MCP boundary находится вне processors; processors получают только подготовленный retrieval/context contract.
 
 ## Компоненты
 
@@ -37,6 +41,10 @@ user message -> Chat Orchestrator -> StageProcessorRequest -> StageProcessorResu
 | `ToolPolicy` | Allowlist/denylist действий чата: read, proposed_patch, preview, apply с подтверждением; запрет прямой записи. |
 | `StageProcessorRequest` | Typed input boundary для stage processors без secrets и лишних документов. |
 | `StageProcessorResult` | Typed output boundary: content, structured content, evidence, assumptions, open questions, proposed_patch, preview. |
+| `StageDraftProcessor` | Готовит structured draft для `PROBLEM`, `GOAL`, `BUSINESS_EFFECT`, `USE_CASES`. |
+| `RequirementsProcessor` | Готовит structured requirements/final BT patches для `FUNCTIONAL_REQUIREMENTS`, `NON_FUNCTIONAL_REQUIREMENTS`, `FINAL_BT`. |
+| `ValidationProcessor` | Готовит validation report без автоматического patch к бизнес-артефактам. |
+| `Corporate Tool Gateway` | Read-only boundary для CorporateSource/MCP/MSP adapters; не хранит secrets в repo и не находится внутри stage processors. |
 | `Patch Preview Service` | Показывает diff/изменяемые поля до записи. |
 | `Apply Patch Service` | Единственная точка записи patch в `discovery_artifacts` после подтверждения. |
 
@@ -70,6 +78,8 @@ user message -> Chat Orchestrator -> StageProcessorRequest -> StageProcessorResu
 - разрешено условно: `patch.apply` только после user confirmation;
 - запрещено: `discovery_artifacts.write`, чтение credentials, запись LLM secrets, raw prompt logging без redaction policy;
 - недоверенный context из файлов/ссылок не может задавать tool instructions.
+- `ApplyPatchService` дополнительно проверяет `artifact_type`, allowlist полей для каждого artifact type, статус action и optimistic version conflict.
+- Unknown fields в `proposed_patch` отклоняются до записи в `discovery_artifacts`.
 
 ## Совместимость
 

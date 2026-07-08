@@ -21,6 +21,81 @@ AI_CHAT_APPLY_ARTIFACT_ALLOWLIST = {
     ArtifactType.FINAL_BT.value,
 }
 
+AI_CHAT_PATCH_FIELD_ALLOWLIST = {
+    ArtifactType.PROBLEM.value: {
+        "problem_statement",
+        "pains",
+        "user_pains",
+        "business_pains",
+        "root_causes",
+        "questions",
+        "evidence_signals",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.GOAL.value: {
+        "recommended_goal",
+        "desired_outcome",
+        "title",
+        "smart",
+        "kpi",
+        "successMetrics",
+        "assumptions",
+        "constraints",
+        "evidence",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.BUSINESS_EFFECT.value: {
+        "qualitative_effect",
+        "quantitative_effect",
+        "metrics",
+        "open_questions",
+        "evidence",
+        "assumptions",
+        "source_trace",
+    },
+    ArtifactType.USE_CASES.value: {
+        "use_cases",
+        "uc_cards",
+        "flows",
+        "exceptions",
+        "linked_requirements",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.FUNCTIONAL_REQUIREMENTS.value: {
+        "functional_requirements",
+        "requirements",
+        "validation_warnings",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value: {
+        "non_functional_requirements",
+        "validation_warnings",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+    ArtifactType.FINAL_BT.value: {
+        "document_preview",
+        "validation_warnings",
+        "export",
+        "evidence",
+        "assumptions",
+        "open_questions",
+        "source_trace",
+    },
+}
+
 
 def build_patch_audit_summary(patch: dict | None) -> dict:
     safe_patch = patch if isinstance(patch, dict) else {}
@@ -77,6 +152,14 @@ class ApplyPatchService:
             raise api_error(403, "VALIDATION_ERROR", "Применение patch запрещено политикой AI-чата.")
 
         artifact_type = ArtifactType(action.target_artifact_type)
+        forbidden_fields = sorted(set(action.proposed_patch.keys()) - AI_CHAT_PATCH_FIELD_ALLOWLIST[artifact_type.value])
+        if forbidden_fields:
+            raise api_error(
+                400,
+                "VALIDATION_ERROR",
+                "Patch содержит поля, запрещённые для этого типа артефакта.",
+                {"forbidden_fields": forbidden_fields},
+            )
         previous = discovery_repo.get_artifact(db, project_id, artifact_type)
         expected_version = (action.action_metadata or {}).get("base_artifact_version")
         current_version = previous.version if previous else 0
