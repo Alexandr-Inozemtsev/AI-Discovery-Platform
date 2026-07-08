@@ -1,1 +1,32 @@
 .page-title { margin: 0 0 10px 0; }
+.stage-two-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.stage-evidence {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface-soft);
+  font-size: 13px;
+}
+
+.stage-evidence + .stage-evidence {
+  margin-top: 8px;
+}
+
+.uc-card h5 {
+  margin: 12px 0 6px;
+}
+
+@media (max-width: 900px) {
+  .stage-two-cols {
+    grid-template-columns: 1fr;
+  }
+}
