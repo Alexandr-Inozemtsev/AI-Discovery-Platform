@@ -25,6 +25,12 @@ class AssistantApplyPatchRequest(BaseModel):
     action_id: str
 
 
+class AssistantRejectActionRequest(BaseModel):
+    session_id: str
+    action_id: str
+    reason: str = ""
+
+
 class AssistantSessionRead(BaseModel):
     id: str
     project_id: str

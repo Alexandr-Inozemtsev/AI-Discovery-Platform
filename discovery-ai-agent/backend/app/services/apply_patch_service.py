@@ -11,6 +11,17 @@ from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as discovery_repo
 
 
+AI_CHAT_APPLY_ARTIFACT_ALLOWLIST = {
+    ArtifactType.PROBLEM.value,
+    ArtifactType.GOAL.value,
+    ArtifactType.BUSINESS_EFFECT.value,
+    ArtifactType.USE_CASES.value,
+    ArtifactType.FUNCTIONAL_REQUIREMENTS.value,
+    ArtifactType.NON_FUNCTIONAL_REQUIREMENTS.value,
+    ArtifactType.FINAL_BT.value,
+}
+
+
 def build_patch_audit_summary(patch: dict | None) -> dict:
     safe_patch = patch if isinstance(patch, dict) else {}
     canonical = json.dumps(safe_patch, sort_keys=True, ensure_ascii=False, default=str)
@@ -54,6 +65,8 @@ class ApplyPatchService:
             raise api_error(400, "VALIDATION_ERROR", "Patch нельзя применить в текущем статусе.")
         if not action.target_artifact_type or not action.proposed_patch:
             raise api_error(400, "VALIDATION_ERROR", "У действия нет patch для применения.")
+        if action.target_artifact_type not in AI_CHAT_APPLY_ARTIFACT_ALLOWLIST:
+            raise api_error(403, "VALIDATION_ERROR", "AI Chat не может применять patch к этому типу артефакта.")
         if not self.tool_policy.is_allowed(
             ToolAction(
                 name="patch.apply",
@@ -65,6 +78,15 @@ class ApplyPatchService:
 
         artifact_type = ArtifactType(action.target_artifact_type)
         previous = discovery_repo.get_artifact(db, project_id, artifact_type)
+        expected_version = (action.action_metadata or {}).get("base_artifact_version")
+        current_version = previous.version if previous else 0
+        if expected_version is not None and int(expected_version) != current_version:
+            raise api_error(
+                409,
+                "VERSION_CONFLICT",
+                "Артефакт изменился после preview. Обновите preview и попробуйте снова.",
+                {"expected_version": expected_version, "current_version": current_version},
+            )
         structured = dict(previous.structured_content or {}) if previous else {}
         structured.update(action.proposed_patch)
         content = self._content_from_patch(artifact_type, structured, previous.content if previous else "")

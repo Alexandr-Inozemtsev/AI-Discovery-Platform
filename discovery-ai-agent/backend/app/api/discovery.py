@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agents.critic_agent import CriticAgent
-from app.agents.discovery_chat_orchestrator import DiscoveryChatOrchestrator
+from app.assistant.discovery_chat_orchestrator import DiscoveryChatOrchestrator
 from app.agents.orchestrator import AgentOrchestrator
 from app.api.errors import api_error, llm_api_error
 from app.llm.factory import create_llm
@@ -11,7 +11,7 @@ from app.db.session import get_db
 from app.models.discovery import ArtifactType
 from app.repositories import assistant as assistant_repo
 from app.repositories import discovery as repo
-from app.schemas.assistant import AssistantApplyPatchRequest, AssistantChatRequest
+from app.schemas.assistant import AssistantApplyPatchRequest, AssistantChatRequest, AssistantRejectActionRequest
 from app.schemas.discovery import ArtifactRead, ArtifactWrite, CompletionResponse, CompletionSection, ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.docx_export_service import build_docx
 from app.services.content_extraction import extract_text_from_upload
@@ -816,6 +816,9 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
     action = None
     if result.proposed_patch:
         patch_audit = build_patch_audit_summary(result.proposed_patch)
+        target_artifact = artifacts.get(result.artifact_type)
+        action_metadata = dict(result.metadata or {})
+        action_metadata["base_artifact_version"] = target_artifact.version if target_artifact else 0
         action = assistant_repo.add_action(
             db,
             project_id=project_id,
@@ -826,7 +829,7 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
             proposed_patch=result.proposed_patch,
             preview=result.preview,
             status='proposed',
-            action_metadata=result.metadata,
+            action_metadata=action_metadata,
         )
         assistant_repo.add_tool_run(
             db,
@@ -900,6 +903,33 @@ def assistant_apply_patch(project_id: str, payload: AssistantApplyPatchRequest, 
         'artifact': _serialize_assistant_artifact(result['artifact']),
         'action': _serialize_assistant_action(result['action']),
     }
+
+
+@router.post('/projects/{project_id}/assistant/reject-action')
+def assistant_reject_action(project_id: str, payload: AssistantRejectActionRequest, db: Session = Depends(get_db)):
+    project = repo.get_project(db, project_id)
+    if not project:
+        raise api_error(404, 'PROJECT_NOT_FOUND')
+    action = assistant_repo.get_action(db, project_id, payload.session_id, payload.action_id)
+    if not action:
+        raise api_error(404, 'ARTIFACT_NOT_FOUND', 'Действие AI-чата не найдено.')
+    if action.status not in {'proposed', 'previewed'}:
+        raise api_error(400, 'VALIDATION_ERROR', 'Действие нельзя отклонить в текущем статусе.')
+    result = dict(action.result or {})
+    if payload.reason:
+        result['reject_reason'] = payload.reason
+    updated_action = assistant_repo.update_action(db, action, status='rejected', result=result)
+    assistant_repo.add_tool_run(
+        db,
+        project_id=project_id,
+        session_id=payload.session_id,
+        action_id=payload.action_id,
+        tool_name='patch.reject',
+        status='success',
+        input_json={'action_id': payload.action_id, 'has_reason': bool(payload.reason)},
+        output_json={'status': 'rejected'},
+    )
+    return {'ok': True, 'action': _serialize_assistant_action(updated_action)}
 
 @router.get('/projects/{project_id}/completion', response_model=CompletionResponse)
 def completion(project_id: str, db: Session = Depends(get_db)):

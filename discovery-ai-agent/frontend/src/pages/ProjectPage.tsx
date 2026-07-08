@@ -488,6 +488,43 @@ export default function ProjectPage(){
     if(status==='blocked'&&!window.confirm('Контекст низкого качества: не хватает подтверждённых данных. Перейти к Problem всё равно?')) return
     setActive('PROBLEM')
   }
+  const asArray=(value:any)=>Array.isArray(value)?value:[]
+  const firstArray=(...values:any[])=>values.find(Array.isArray)||[]
+  const renderStructuredStage=()=>{
+    if(active==='BUSINESS_EFFECT'){
+      const qualitative=firstArray(structured.qualitative_effect, structured.quality_effects)
+      const quantitative=firstArray(structured.quantitative_effect, structured.metrics)
+      const questions=asArray(structured.open_questions)
+      return <div className='stage-specific-grid'>
+        <div className='ui-card'><h4>Качественный эффект</h4>{qualitative.length?qualitative.map((item:any,i:number)=><div className='stage-row' key={i}>{safeText(item)}</div>):<p className='sub'>Пока нет подтверждённого качественного эффекта.</p>}</div>
+        <div className='ui-card'><h4>Количественный эффект и метрики</h4>{quantitative.length?quantitative.map((item:any,i:number)=><div className='stage-row' key={i}><b>{safeText(item.metric||item.name||`Метрика ${i+1}`)}</b><span className='sub'>{safeText(item.value||item.target||item.direction||item.formula)}</span></div>):<p className='sub'>Если расчёт невозможен, AI должен предложить вопросы вместо неподтверждённых цифр.</p>}</div>
+        <div className='ui-card'><h4>Открытые вопросы</h4>{questions.length?questions.map((q:any,i:number)=><div className='sub' key={i}>• {safeText(q)}</div>):<p className='sub'>Нет открытых вопросов.</p>}</div>
+      </div>
+    }
+    if(active==='USE_CASES'){
+      const useCases=firstArray(structured.use_cases, structured.uc_cards)
+      return <div className='stage-specific-grid'>{useCases.length?useCases.map((uc:any,i:number)=><div className='ui-card' key={i}><div className='ui-actions ui-actions--between'><h4>{safeText(uc.title||`UC-${i+1}`)}</h4><span className='ui-badge warning'>{safeText(uc.actor||'Роль не указана')}</span></div><p className='sub'>Цель: {safeText(uc.goal||uc.description||'—')}</p><p className='sub'>Триггер: {safeText(uc.trigger||'—')}</p><h5>Основной поток</h5>{asArray(uc.flow||uc.main_flow).map((step:any,idx:number)=><div className='stage-row' key={idx}>{idx+1}. {safeText(step)}</div>)}<h5>Исключения</h5>{asArray(uc.exceptions).map((row:any,idx:number)=><div className='sub' key={idx}>• {safeText(row)}</div>)}<h5>Связанные требования</h5><div className='sub'>{asArray(uc.linked_requirements).length?safeText(uc.linked_requirements):'Нет связанного требования'}</div></div>):<div className='ui-card'><p className='sub'>Use Cases пока не сформированы. Используйте AI Chat для подготовки карточек UC.</p></div>}</div>
+    }
+    if(active==='FUNCTIONAL_REQUIREMENTS'){
+      const fr=firstArray(structured.functional_requirements, structured.requirements)
+      const nfr=asArray(structured.non_functional_requirements)
+      const warnings=asArray(structured.validation_warnings)
+      return <div className='stage-specific-grid stage-specific-grid--wide'>
+        <div className='ui-card'><h4>FR/NFR таблица</h4><table className='ui-table'><thead><tr><th>ID</th><th>Тип</th><th>Формулировка</th><th>Acceptance criteria</th><th>Evidence</th><th>Статус</th></tr></thead><tbody>{[...fr.map((r:any)=>({...r,type:'FR'})),...nfr.map((r:any)=>({...r,type:'NFR'}))].map((r:any,i:number)=><tr key={i}><td>{safeText(r.id||`${r.type}-${i+1}`)}</td><td>{safeText(r.type)}</td><td>{safeText(r.title||r.description||r.target)}</td><td>{safeText(r.acceptance_criteria||r.measurement)}</td><td>{asArray(r.evidence).length?'Есть':'Нет'}</td><td>{r.assumption?'Допущение':'Требует проверки'}</td></tr>)}</tbody></table>{!fr.length&&!nfr.length?<p className='sub'>Требования пока не сформированы.</p>:null}</div>
+        <div className='ui-card'><h4>Validation warnings</h4>{warnings.length?warnings.map((w:any,i:number)=><div className='sub' key={i}>• {safeText(w)}</div>):<p className='sub'>Нет предупреждений в structured state.</p>}</div>
+      </div>
+    }
+    if(active==='FINAL_BT'){
+      const preview=structured.document_preview||{}
+      const sections=asArray(preview.sections)
+      const warnings=asArray(structured.validation_warnings)
+      return <div className='stage-specific-grid'>
+        <div className='ui-card'><h4>Document preview</h4><h3>{safeText(preview.title||'Финальный БТ')}</h3>{sections.length?sections.map((s:any,i:number)=><div className='stage-row' key={i}>{i+1}. {safeText(s)}</div>):<p className='sub'>Разделы документа пока не собраны.</p>}</div>
+        <div className='ui-card'><h4>Validation warnings</h4>{warnings.length?warnings.map((w:any,i:number)=><div className='sub' key={i}>• {safeText(w)}</div>):<p className='sub'>Перед экспортом проверьте полноту Context, Problem, Goal и Requirements.</p>}<ButtonLink variant='secondary' size='sm' href={`http://localhost:8000/api/projects/${projectId}/export/docx`}>Экспортировать DOCX</ButtonLink></div>
+      </div>
+    }
+    return <div className='artifact-draft'><h4 className='subhead'>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>
+  }
 
   if(!project) return <div className='ui-card'>Проект не найден</div>
   return <div className='workspace-single project-workspace-chat'>
@@ -527,7 +564,7 @@ export default function ProjectPage(){
           <div className='ui-card'><h4>AI Drafts</h4>{goalDraft ? (goalDraft.goal_options||[]).map((o:any,i:number)=><div key={i} className='ui-card'><b>{o.title||`Вариант ${i+1}`}</b><div className='sub'>{o.description}</div><div className='ui-actions'><Button variant='primary' onClick={()=>applyGoalOption(o,'select')}>Выбрать</Button><Button variant='secondary' onClick={()=>applyGoalOption(o,'merge')}>Объединить</Button><Button variant='secondary'>Редактировать</Button></div></div>) : <div className='sub'>Сначала запустите генерацию целей.</div>}</div>
           <div className='ui-card'><h4>Impact Map</h4><div className='impact-col'><span>Цель → Проблемы → KPI → Бизнес-эффект → Требования → Use Cases → Финальный БТ</span></div></div>
           <div className='ui-card'><h4>AI Questions</h4>{(goalData.aiQuestions||[]).map((q:string,i:number)=><div key={i} className='sub'>• {q}</div>)}<input className='ui-input' placeholder='Ответьте на вопрос AI...' value={goalQuestion} onChange={e=>setGoalQuestion(e.target.value)}/><Button variant='secondary' onClick={askGoal}>Отправить AI</Button>{goalPatch && <div className='ui-card'><div className='sub'>AI предлагает patch</div><div className='ui-actions'><Button variant='primary' onClick={applyGoalPatch}>Применить</Button><Button variant='secondary' onClick={()=>setGoalPatch(null)}>Отклонить</Button></div></div>}</div>
-        </div> : <div className='artifact-draft'><h4 className='subhead'>Черновик артефакта</h4><p className='sub'>Заполните раздел вручную или используйте генерацию mock-агентом.</p><RichEditor value={content} onChange={(html,json)=>{setContent(html); setRichJson(json)}} /></div>}</ErrorBoundary>
+        </div> : renderStructuredStage()}</ErrorBoundary>
         
         {active==='FINAL_BT' && <div className='ui-card page-section-gap'><h4>Preview финального БТ</h4><div className='sub'>Sections, зависящие от Goal: BUSINESS_EFFECT, AS_IS, TO_BE, USE_CASES, REQUIREMENTS, RISKS, FINAL_BT.</div></div>}<div className='sub'>Autosave: {saving==='saving'?'Сохранение…':saving==='saved'?'Сохранено':saving==='error'?'Ошибка сохранения':'—'}</div>
         {msg && <p className={`sub ${msg==='Сохранено' || msg==='Генерация завершена' ? '' : ''}`}>{msg}</p>}

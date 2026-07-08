@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from app.agents.chat_context_assembler import ChatContextAssembler
-from app.agents.intent_router import IntentRouter
+from app.assistant.chat_context_assembler import ChatContextAssembler
+from app.assistant.intent_router import IntentRouter
 from app.models.discovery import ArtifactType
 from app.rag.simple_retriever import RetrievalQuery, SimpleRetriever
 

@@ -51,7 +51,8 @@ def test_assistant_chat_creates_session_messages_and_proposed_patch_without_appl
     assert payload["action"]["status"] == "proposed"
     assert payload["action"]["target_artifact_type"] == "PROBLEM"
     assert payload["action"]["proposed_patch"]["problem_statement"]
-    assert payload["preview"]["changed_fields"] == ["problem_statement"]
+    assert "problem_statement" in payload["preview"]["changed_fields"]
+    assert "pains" in payload["preview"]["changed_fields"]
     assert discovery_repo.get_artifact(db, project.id, ArtifactType.PROBLEM) is None
 
     sessions = discovery.get_assistant_sessions(project.id, db=db)
@@ -220,6 +221,93 @@ def test_assistant_apply_patch_rejects_rejected_or_failed_actions():
 
     assert exc.value.status_code == 400
     assert exc.value.detail["human_message"] == "Patch нельзя применить в текущем статусе."
+
+
+def test_assistant_apply_patch_rejects_artifact_type_outside_chat_allowlist():
+    db = _session()
+    project = _create_project(db)
+    session = assistant_repo.create_session(db, project.id)
+    action = assistant_repo.add_action(
+        db,
+        project_id=project.id,
+        session_id=session.id,
+        message_id=None,
+        action_type="proposed_patch",
+        target_artifact_type=ArtifactType.CONTEXT.value,
+        proposed_patch={"content": "AI Chat не должен обновлять context напрямую."},
+        preview={"changed_fields": ["content"]},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
+            db=db,
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["human_message"] == "AI Chat не может применять patch к этому типу артефакта."
+
+
+def test_assistant_apply_patch_rejects_version_conflict():
+    db = _session()
+    project = _create_project(db)
+    artifact = discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.PROBLEM,
+        "Старая проблема",
+        structured_content={"problem_statement": "Старая проблема"},
+    )
+    session = assistant_repo.create_session(db, project.id)
+    action = assistant_repo.add_action(
+        db,
+        project_id=project.id,
+        session_id=session.id,
+        message_id=None,
+        action_type="proposed_patch",
+        target_artifact_type=ArtifactType.PROBLEM.value,
+        proposed_patch={"problem_statement": "Новая проблема из AI Chat"},
+        preview={"changed_fields": ["problem_statement"]},
+        action_metadata={"base_artifact_version": artifact.version},
+    )
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.PROBLEM,
+        "Пользователь уже изменил проблему",
+        structured_content={"problem_statement": "Пользователь уже изменил проблему"},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        discovery.assistant_apply_patch(
+            project.id,
+            discovery.AssistantApplyPatchRequest(session_id=session.id, action_id=action.id),
+            db=db,
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["error_code"] == "VERSION_CONFLICT"
+    assert exc.value.detail["human_message"] == "Артефакт изменился после preview. Обновите preview и попробуйте снова."
+
+
+def test_assistant_reject_action_endpoint_marks_proposed_patch_rejected():
+    db = _session()
+    project = _create_project(db)
+    chat = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="Проблема: ручной процесс.", artifact_type=ArtifactType.PROBLEM),
+        db=db,
+    )
+
+    payload = discovery.assistant_reject_action(
+        project.id,
+        discovery.AssistantRejectActionRequest(session_id=chat["session_id"], action_id=chat["action"]["id"]),
+        db=db,
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"]["status"] == "rejected"
 
 
 def test_llm_settings_serializer_does_not_expose_raw_provider_error_details():
