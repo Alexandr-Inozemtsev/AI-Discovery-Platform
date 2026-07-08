@@ -17,7 +17,7 @@ AI Discovery Chat не является Product AI Agent и не должен ж
 | Stage processors | `discovery-ai-agent/backend/app/processors/` | Доменные черновики по этапам через `StageProcessorRequest/StageProcessorResult`. |
 | Product AI Agents | `discovery-ai-agent/backend/app/agents/` | Старые и совместимые доменные агенты, `BaseAgent`, `AgentOrchestrator`, agent runtime. |
 | Retrieval | `discovery-ai-agent/backend/app/rag/` | `SimpleRetriever`, retrieval query/result, evidence chunks. |
-| Corporate sources | `discovery-ai-agent/backend/app/corporate/` | Read-only Corporate Tool Gateway / CorporateSource boundary для будущих MCP/MSP adapters. |
+| Corporate sources | `discovery-ai-agent/backend/app/corporate_sources/` | Read-only Corporate Tool Gateway / CorporateSource boundary для будущих MCP/MSP adapters. |
 | ApplyPatch security | `discovery-ai-agent/backend/app/services/apply_patch_service.py` | Единственная точка записи proposed patch в `discovery_artifacts` после preview и подтверждения. |
 
 ## Разрешённые зависимости
@@ -33,7 +33,7 @@ assistant/
 processors/
   -> agents/runtime/
   -> models/
-corporate/
+corporate_sources/
   -> agents/runtime/ToolPolicy
 agents/
   -> agents/runtime/
@@ -44,7 +44,7 @@ agents/
 ## Запрещённые зависимости
 
 - `agents/ -> assistant/`: Product AI Agents не знают о chat UI и orchestration layer.
-- `processors/ -> corporate/`: processors получают только подготовленный retrieval/context contract.
+- `processors/ -> corporate_sources/`: processors получают только подготовленный retrieval/context contract.
 - `processors/ -> repositories/`: processors не пишут и не читают БД напрямую.
 - `assistant/ -> frontend/`: backend orchestration не зависит от React implementation.
 - `Corporate Tool Gateway -> discovery_artifacts.write`: corporate adapters read-only в MVP.
@@ -71,4 +71,4 @@ assistant chat message
 
 `SimpleRetriever` остаётся в `backend/app/rag/simple_retriever.py`. Переименование в `app/retrieval/` возможно только отдельной совместимой миграцией с обновлением импортов и тестов.
 
-`Corporate Tool Gateway` сейчас живёт в `backend/app/corporate/`. Целевой пакет `backend/app/corporate_sources/` можно ввести позже как compatibility wrapper или rename migration, но secrets и credentials не должны попадать в repository.
+`Corporate Tool Gateway` сейчас живёт в `backend/app/corporate_sources/`. Secrets и credentials не должны попадать в repository.
