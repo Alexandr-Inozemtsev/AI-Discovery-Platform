@@ -38,8 +38,10 @@
 
 Физические границы runtime:
 
-- `discovery-ai-agent/backend/app/assistant/` - application service слой AI Discovery Chat: `DiscoveryChatOrchestrator`, `IntentRouter`, `ChatContextAssembler`, prompt templates и chat processors.
+- `discovery-ai-agent/backend/app/assistant/` - application service слой AI Discovery Chat: `DiscoveryChatOrchestrator`, `IntentRouter`, `ChatContextAssembler`, `AssistantActionBuilder`, `AssistantResponseBuilder` и chat-only prompt templates.
+- `discovery-ai-agent/backend/app/processors/` - stage processing layer: `StageDraftProcessor`, `RequirementsProcessor`, `ValidationProcessor`. Этот слой работает с `StageProcessorRequest/StageProcessorResult` и не пишет в БД.
 - `discovery-ai-agent/backend/app/agents/` - Product AI Agents и общий agent runtime. Chat Orchestrator не должен находиться в этом пакете.
+- `discovery-ai-agent/backend/app/rag/` - retrieval boundary для SimpleRetriever. Assistant layer может читать retrieval result, processors получают только подготовленный contract.
 - `discovery-ai-agent/backend/app/corporate/` - Corporate Tool Gateway / CorporateSource boundary для read-only MCP/MSP adapters.
 
 `StageProcessorRequest`:

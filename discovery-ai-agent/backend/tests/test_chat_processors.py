@@ -6,8 +6,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.agents.runtime import StageProcessorRequest
 from app.assistant.discovery_chat_orchestrator import DiscoveryChatOrchestrator
-from app.assistant.processors import RequirementsProcessor, StageDraftProcessor, ValidationProcessor
 from app.models.discovery import ArtifactType
+from app.processors import RequirementsProcessor, StageDraftProcessor, ValidationProcessor
 
 
 def _request(artifact_type: ArtifactType, message: str = "Сократить ручные операции и задержки") -> StageProcessorRequest:

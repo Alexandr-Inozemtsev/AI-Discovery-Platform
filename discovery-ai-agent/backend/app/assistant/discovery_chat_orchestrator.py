@@ -1,9 +1,11 @@
+from app.assistant.assistant_action_builder import AssistantActionBuilder
+from app.assistant.assistant_response_builder import AssistantResponseBuilder
 from app.assistant.chat_context_assembler import ChatContextAssembler
 from app.assistant.intent_router import IntentRouter, RoutedIntent
-from app.assistant.processors import processor_for_artifact
 from app.agents.runtime import StageProcessorResult, ToolAction, ToolPolicy
 from app.agents.runtime.stage_processor_contract import StageProcessorRequest
 from app.models.discovery import ArtifactType, DiscoveryProject
+from app.processors import processor_for_artifact
 from app.rag.simple_retriever import RetrievalQuery, SimpleRetriever
 
 
@@ -14,11 +16,15 @@ class DiscoveryChatOrchestrator:
         tool_policy: ToolPolicy | None = None,
         retriever: SimpleRetriever | None = None,
         context_assembler: ChatContextAssembler | None = None,
+        response_builder: AssistantResponseBuilder | None = None,
+        action_builder: AssistantActionBuilder | None = None,
     ):
         self.intent_router = intent_router or IntentRouter()
         self.tool_policy = tool_policy or ToolPolicy.for_ai_discovery_chat()
         self.retriever = retriever or SimpleRetriever()
         self.context_assembler = context_assembler or ChatContextAssembler()
+        self.response_builder = response_builder or AssistantResponseBuilder()
+        self.action_builder = action_builder or AssistantActionBuilder()
 
     def handle_message(
         self,
@@ -34,11 +40,10 @@ class DiscoveryChatOrchestrator:
         if intent.intent_type == "draft_artifact_patch" and intent.target_artifact_type:
             result = self._draft_patch(project, message, intent, context_artifact or {}, artifacts or {})
         else:
-            result = StageProcessorResult(
-                ok=True,
-                artifact_type=(intent.target_artifact_type.value if intent.target_artifact_type else ""),
-                human_message="Я готов помочь пройти Discovery workflow. Уточните этап или артефакт, который нужно обновить.",
-                metadata={"intent_type": intent.intent_type, "confidence": intent.confidence},
+            result = self.response_builder.guidance_response(
+                intent_type=intent.intent_type,
+                confidence=intent.confidence,
+                artifact_type=intent.target_artifact_type,
             )
         return {
             "intent": {
@@ -64,12 +69,10 @@ class DiscoveryChatOrchestrator:
             raise ValueError("target artifact type is required")
         for action_name in ("proposed_patch.create", "patch.preview"):
             if not self.tool_policy.is_allowed(ToolAction(name=action_name, target=artifact_type.value)):
-                return StageProcessorResult(
-                    ok=False,
-                    artifact_type=artifact_type.value,
-                    human_message="Действие запрещено политикой AI-чата.",
-                    errors=[f"Tool action is not allowed: {action_name}"],
-                    metadata={"intent_type": intent.intent_type},
+                return self.response_builder.policy_denied_response(
+                    artifact_type=artifact_type,
+                    intent_type=intent.intent_type,
+                    action_name=action_name,
                 )
 
         retrieval_result = self.retriever.retrieve(
@@ -110,50 +113,38 @@ class DiscoveryChatOrchestrator:
             processor_result.warnings = [*processor_result.warnings, *retrieval_result.warnings]
             processor_result.metadata = {
                 **processor_result.metadata,
-                "intent_type": intent.intent_type,
-                "confidence": intent.confidence,
-                "command": intent.command,
-                "prompt_version": intent.prompt_version,
-                "prompt_instruction": intent.instruction,
-                "project_id": project.id,
-                "source": "ai_discovery_chat",
-                "retrieval": retrieval_result.to_dict(),
-                "evidence": processor_result.evidence,
-                "assumptions": processor_result.assumptions,
-                "open_questions": processor_result.open_questions,
-                "token_budget": assembled_context["token_budget"],
-                "data_policy": assembled_context["data_policy"],
+                **self.action_builder.processor_metadata(
+                    project=project,
+                    intent=intent,
+                    artifact_type=artifact_type,
+                    retrieval=retrieval_result.to_dict(),
+                    evidence=processor_result.evidence,
+                    assumptions=processor_result.assumptions,
+                    open_questions=processor_result.open_questions,
+                    token_budget=assembled_context["token_budget"],
+                    data_policy=assembled_context["data_policy"],
+                ),
             }
             return processor_result
 
-        return StageProcessorResult(
-            ok=True,
-            artifact_type=artifact_type.value,
-            content="",
-            structured_content={},
-            proposed_patch={},
-            preview={},
+        return self.response_builder.unsupported_processor_response(
+            artifact_type=artifact_type,
             evidence=assembled_context["evidence"],
-            assumptions=list(assembled_context["assumptions"]),
-            open_questions=list(assembled_context["open_questions"]),
+            assumptions=assembled_context["assumptions"],
+            open_questions=assembled_context["open_questions"],
             source_trace=retrieval_result.source_trace,
             warnings=retrieval_result.warnings,
-            human_message="Для этого этапа AI Chat пока не формирует patch. Я могу показать состояние или предложить уточняющие вопросы.",
-            metadata={
-                "intent_type": intent.intent_type,
-                "confidence": intent.confidence,
-                "command": intent.command,
-                "prompt_version": intent.prompt_version,
-                "prompt_instruction": intent.instruction,
-                "project_id": project.id,
-                "source": "ai_discovery_chat",
-                "retrieval": retrieval_result.to_dict(),
-                "evidence": assembled_context["evidence"],
-                "assumptions": assembled_context["assumptions"],
-                "open_questions": assembled_context["open_questions"],
-                "token_budget": assembled_context["token_budget"],
-                "data_policy": assembled_context["data_policy"],
-            },
+            metadata=self.action_builder.processor_metadata(
+                project=project,
+                intent=intent,
+                artifact_type=artifact_type,
+                retrieval=retrieval_result.to_dict(),
+                evidence=assembled_context["evidence"],
+                assumptions=assembled_context["assumptions"],
+                open_questions=assembled_context["open_questions"],
+                token_budget=assembled_context["token_budget"],
+                data_policy=assembled_context["data_policy"],
+            ),
         )
 
     def _clean_message(self, message: str) -> str:
