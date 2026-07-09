@@ -11,6 +11,46 @@ class AssistantResponseBuilder:
             metadata={"intent_type": intent_type, "confidence": confidence},
         )
 
+    def answer_from_context_response(
+        self,
+        *,
+        intent_type: str,
+        query: str,
+        evidence: list[dict],
+        source_trace: list[dict],
+        warnings: list[str],
+        metadata: dict,
+    ) -> StageProcessorResult:
+        if evidence:
+            snippets = []
+            for item in evidence[:3]:
+                source_name = item.get("source_name") or item.get("source_id") or "источник"
+                text = str(item.get("text") or "").strip()
+                if len(text) > 700:
+                    text = text[:686] + "...[truncated]"
+                snippets.append(f"- {source_name}: {text}")
+            human_message = "Нашёл подтверждение в загруженных источниках:\n" + "\n".join(snippets)
+        else:
+            human_message = "В загруженных источниках подтверждение не найдено. Попробуйте уточнить запрос или обновить контекст."
+
+        return StageProcessorResult(
+            ok=True,
+            artifact_type="",
+            content=human_message,
+            structured_content={
+                "answer": human_message,
+                "query": query,
+                "evidence_count": len(evidence),
+            },
+            proposed_patch={},
+            preview={},
+            evidence=evidence,
+            source_trace=source_trace,
+            warnings=warnings,
+            human_message=human_message,
+            metadata={**metadata, "intent_type": intent_type},
+        )
+
     def policy_denied_response(self, artifact_type: ArtifactType, intent_type: str, action_name: str) -> StageProcessorResult:
         return StageProcessorResult(
             ok=False,

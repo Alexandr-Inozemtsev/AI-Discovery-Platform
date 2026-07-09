@@ -147,3 +147,28 @@ def test_intent_router_routes_chat_commands_to_prompt_templates():
     assert router.route("@requirements добавь требования").target_artifact_type == ArtifactType.FUNCTIONAL_REQUIREMENTS
     assert router.route("@critic проверь качество").intent_type == "validate_workflow"
     assert router.route("@export подготовь DOCX").intent_type == "export_document"
+
+
+def test_intent_router_routes_source_questions_before_stage_patch_context():
+    router = IntentRouter()
+
+    routed = router.route("найди описание БТ во вложении", artifact_type=ArtifactType.PROBLEM)
+
+    assert routed.intent_type in {"answer_from_context", "search_context_sources"}
+    assert routed.target_artifact_type is None
+
+
+def test_simple_retriever_does_not_return_unrelated_chunks_as_evidence():
+    result = SimpleRetriever().retrieve(
+        RetrievalQuery(
+            project_id="project_1",
+            query="регуляторные лимиты валютного контроля",
+            context_artifact=_context_artifact(),
+            top_k=3,
+            max_chars=500,
+        )
+    )
+
+    assert result.ok is True
+    assert result.chunks == []
+    assert any("usable evidence" in warning for warning in result.warnings)

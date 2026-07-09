@@ -1,4 +1,4 @@
-import { Bot, CheckCircle2, ClipboardCheck, FileText, HelpCircle, ListChecks, MessageSquareText, Send, Sparkles } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, ClipboardCheck, FileText, HelpCircle, ListChecks, MessageSquareText, Send, Sparkles } from 'lucide-react'
 import type { ArtifactType, AssistantAction, AssistantMessage } from '../../types/discovery'
 import Button from './Button'
 
@@ -47,6 +47,24 @@ const changedFields = (action?: AssistantAction | null) => {
   const fromPreview = action?.preview?.changed_fields
   if (Array.isArray(fromPreview)) return fromPreview.map(String)
   return Object.keys(action?.proposed_patch || {})
+}
+
+const asRecords = (value: unknown): Record<string, unknown>[] => (
+  Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []
+)
+
+const asStrings = (value: unknown): string[] => (
+  Array.isArray(value) ? value.map(String).filter(Boolean) : []
+)
+
+const messageEvidence = (message: AssistantMessage) => asRecords(message.payload?.evidence)
+const messageSourceTrace = (message: AssistantMessage) => asRecords(message.payload?.source_trace)
+const messageWarnings = (message: AssistantMessage) => asStrings(message.payload?.warnings)
+
+const sourceLabel = (item: Record<string, unknown>) => String(item.source_name || item.source_id || 'Источник')
+const sourceSnippet = (item: Record<string, unknown>) => {
+  const text = String(item.text || '').trim()
+  return text.length > 220 ? `${text.slice(0, 217)}...` : text
 }
 
 const artifactLabels: Record<ArtifactType, string> = {
@@ -127,6 +145,29 @@ export default function AIAssistantPanel({
             <div key={message.id} className={`ai-chat-message ai-chat-message--${message.role}`}>
               <div className='ai-chat-message__role'>{message.role === 'user' ? 'Вы' : 'AI'}</div>
               <div className='ai-chat-message__content'>{message.content}</div>
+              {messageWarnings(message).length ? (
+                <div className='ai-chat-message__warnings'>
+                  {messageWarnings(message).map((warning, index) => (
+                    <div key={`${message.id}_warning_${index}`}><AlertTriangle size={13} /> {warning}</div>
+                  ))}
+                </div>
+              ) : null}
+              {message.role === 'assistant' && messageEvidence(message).length ? (
+                <div className='ai-chat-evidence'>
+                  <div className='ai-chat-evidence__title'><FileText size={14} /> Найдено в источниках</div>
+                  {messageEvidence(message).slice(0, 3).map((item, index) => (
+                    <div key={`${message.id}_evidence_${index}`} className='ai-chat-evidence__item'>
+                      <b>{sourceLabel(item)}</b>
+                      {sourceSnippet(item) ? <span>{sourceSnippet(item)}</span> : null}
+                    </div>
+                  ))}
+                  {messageSourceTrace(message).length ? (
+                    <div className='ai-chat-evidence__trace'>
+                      {messageSourceTrace(message).filter((item) => item.used).slice(0, 3).map(sourceLabel).join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ))
         )}

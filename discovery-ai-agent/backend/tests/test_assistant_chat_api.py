@@ -155,6 +155,125 @@ def test_assistant_chat_uses_context_retrieval_and_propagates_evidence():
     assert preview["evidence_count"] == 1
 
 
+def test_assistant_chat_answer_from_context_uses_uploaded_file_chunks_without_patch():
+    db = _session()
+    project = _create_project(db)
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.CONTEXT,
+        "",
+        structured_content={
+            "uploaded_files": [
+                {
+                    "id": "doc_bt",
+                    "name": "Описание процесса пролонгации ИБС.docx",
+                    "text_extraction_status": "completed",
+                    "chunks": [
+                        {
+                            "id": "chunk_bt",
+                            "text": "В БТ описан процесс автопролонгации ИБС: система проверяет договор и продлевает услугу без визита клиента.",
+                            "order": 0,
+                        }
+                    ],
+                }
+            ],
+            "source_trace": [
+                {
+                    "source_id": "doc_bt",
+                    "source_type": "document",
+                    "source_name": "Описание процесса пролонгации ИБС.docx",
+                    "used": True,
+                    "content_level": "chunks",
+                }
+            ],
+        },
+    )
+
+    payload = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(
+            message="найди описание БТ во вложении",
+            artifact_type=ArtifactType.PROBLEM,
+        ),
+        db=db,
+    )
+
+    assert payload["ok"] is True
+    assert payload["intent"]["type"] in {"answer_from_context", "search_context_sources"}
+    assert payload["action"] is None
+    assert payload["preview"] == {}
+    assert "автопролонгации ИБС" in payload["assistant_message"]["content"]
+    message_payload = payload["assistant_message"]["payload"]
+    assert message_payload["evidence"][0]["chunk_id"] == "chunk_bt"
+    assert message_payload["source_trace"][0]["source_id"] == "doc_bt"
+
+
+def test_assistant_chat_answer_from_context_requires_update_warning():
+    db = _session()
+    project = _create_project(db)
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.CONTEXT,
+        "",
+        structured_content={
+            "indexing_status": "requires_update",
+            "uploaded_files": [
+                {
+                    "id": "doc_ibs",
+                    "name": "ibs.md",
+                    "text_extraction_status": "completed",
+                    "chunks": [{"id": "chunk_ibs", "text": "ИБС продлевается автоматически после проверки договора.", "order": 0}],
+                }
+            ],
+        },
+    )
+
+    payload = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="что в документе сказано про ИБС?", artifact_type=ArtifactType.CONTEXT),
+        db=db,
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"] is None
+    assert any("Контекст требует обновления" in warning for warning in payload["warnings"])
+    assert "ИБС продлевается автоматически" in payload["assistant_message"]["content"]
+
+
+def test_assistant_chat_answer_from_context_no_evidence():
+    db = _session()
+    project = _create_project(db)
+    discovery_repo.upsert_artifact(
+        db,
+        project.id,
+        ArtifactType.CONTEXT,
+        "",
+        structured_content={
+            "uploaded_files": [
+                {
+                    "id": "doc_process",
+                    "name": "process.md",
+                    "text_extraction_status": "completed",
+                    "chunks": [{"id": "chunk_process", "text": "Описан процесс выдачи справок клиентам.", "order": 0}],
+                }
+            ],
+        },
+    )
+
+    payload = discovery.assistant_chat(
+        project.id,
+        discovery.AssistantChatRequest(message="найди регламент валютного контроля во вложении", artifact_type=ArtifactType.PROBLEM),
+        db=db,
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"] is None
+    assert payload["assistant_message"]["payload"]["evidence"] == []
+    assert "подтверждение не найдено" in payload["assistant_message"]["content"].lower()
+
+
 def test_assistant_tool_runs_do_not_store_full_patch_or_retrieved_chunk_text():
     db = _session()
     project = _create_project(db)

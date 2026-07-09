@@ -95,11 +95,15 @@ class SimpleRetriever:
                 )
                 continue
 
+            source_matched = False
             for raw_chunk in source["chunks"]:
                 text = str(raw_chunk.get("text") or "").strip()
                 if not text:
                     continue
                 score, reason = self._score(tokens, text, source)
+                if reason == "low_confidence":
+                    continue
+                source_matched = True
                 candidates.append(
                     RetrievedChunk(
                         chunk_id=str(raw_chunk.get("id") or raw_chunk.get("chunk_id") or f"{source['source_id']}:{raw_chunk.get('order', 0)}"),
@@ -114,6 +118,18 @@ class SimpleRetriever:
                         chunk_order=raw_chunk.get("order"),
                         metadata={"truncated": False},
                     )
+                )
+            if not source_matched:
+                source_trace.append(
+                    {
+                        **base_trace,
+                        "source_id": source["source_id"],
+                        "source_type": source["source_type"],
+                        "source_name": source["source_name"],
+                        "used": False,
+                        "content_level": source["content_level"],
+                        "reason": "В источнике не найдено совпадений с запросом.",
+                    }
                 )
 
         ranked = sorted(candidates, key=lambda chunk: (-chunk.score, chunk.source_name, chunk.chunk_order or 0))
@@ -226,7 +242,13 @@ class SimpleRetriever:
             score += 0.05
         if len(text) < 20:
             score -= 0.1
-        return (round(max(score, 0.01), 4), "keyword_overlap" if overlap else "low_confidence")
+        if overlap:
+            reason = "keyword_overlap"
+        elif name_overlap:
+            reason = "source_name_overlap"
+        else:
+            reason = "low_confidence"
+        return (round(max(score, 0.01), 4), reason)
 
     def _apply_budget(self, chunks: list[RetrievedChunk], max_chars: int, warnings: list[str]) -> list[RetrievedChunk]:
         selected: list[RetrievedChunk] = []
@@ -245,7 +267,7 @@ class SimpleRetriever:
         return selected
 
     def _tokens(self, value: str) -> set[str]:
-        return {token for token in re.split(r"[^0-9A-Za-zА-Яа-яЁё]+", (value or "").lower()) if len(token) > 2}
+        return {token for token in re.split(r"[^0-9A-Za-zА-Яа-яЁё]+", (value or "").lower()) if len(token) > 1}
 
     def _metadata(self, query: RetrievalQuery, **kwargs: Any) -> dict[str, Any]:
         return {

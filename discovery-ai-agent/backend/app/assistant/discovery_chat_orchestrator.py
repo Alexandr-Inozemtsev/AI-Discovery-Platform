@@ -55,7 +55,9 @@ class DiscoveryChatOrchestrator:
         artifacts: dict | None = None,
     ) -> dict:
         intent = self.intent_router.route(message, artifact_type)
-        if intent.intent_type in {"draft_artifact_patch", "validate_workflow", "export_document"} and intent.target_artifact_type:
+        if intent.intent_type in {"answer_from_context", "search_context_sources"}:
+            result = self._answer_from_context(project, message, intent, context_artifact or {})
+        elif intent.intent_type in {"draft_artifact_patch", "validate_workflow", "export_document"} and intent.target_artifact_type:
             result = self._draft_patch(project, message, intent, context_artifact or {}, artifacts or {})
         else:
             result = self.response_builder.guidance_response(
@@ -73,6 +75,57 @@ class DiscoveryChatOrchestrator:
             },
             "result": result,
         }
+
+    def _answer_from_context(
+        self,
+        project: DiscoveryProject,
+        message: str,
+        intent: RoutedIntent,
+        context_artifact: dict,
+    ) -> StageProcessorResult:
+        retrieval_result = self.retriever.retrieve(
+            RetrievalQuery(
+                project_id=project.id,
+                query=self._clean_message(message),
+                artifact_type=ArtifactType.CONTEXT.value,
+                stage=ArtifactType.CONTEXT.value,
+                context_artifact=context_artifact,
+                top_k=5,
+                max_chars=4000,
+            )
+        )
+        warnings = list(retrieval_result.warnings)
+        if context_artifact.get("indexing_status") == "requires_update" and retrieval_result.chunks:
+            warnings.append(
+                "Контекст требует обновления. Ответ построен по уже извлечённому тексту файла, но полная выжимка контекста ещё не обновлена."
+            )
+        evidence = [chunk.to_dict() for chunk in retrieval_result.chunks]
+        return self.response_builder.answer_from_context_response(
+            intent_type=intent.intent_type,
+            query=retrieval_result.query,
+            evidence=evidence,
+            source_trace=retrieval_result.source_trace,
+            warnings=list(dict.fromkeys(warnings)),
+            metadata={
+                "retrieval": {
+                    **retrieval_result.to_dict(),
+                    "chunks": [
+                        {
+                            "chunk_id": chunk.chunk_id,
+                            "source_id": chunk.source_id,
+                            "source_type": chunk.source_type,
+                            "source_name": chunk.source_name,
+                            "score": chunk.score,
+                            "rank": chunk.rank,
+                            "content_level": chunk.content_level,
+                            "chunk_order": chunk.chunk_order,
+                            "metadata": chunk.metadata,
+                        }
+                        for chunk in retrieval_result.chunks
+                    ],
+                }
+            },
+        )
 
     def _draft_patch(
         self,

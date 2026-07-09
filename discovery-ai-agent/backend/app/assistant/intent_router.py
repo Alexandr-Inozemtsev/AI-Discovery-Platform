@@ -30,6 +30,25 @@ class IntentRouter:
                 instruction=template["instruction"],
             )
 
+        source_question_markers = (
+            "найди",
+            "что сказано",
+            "посмотри во вложении",
+            "во вложении",
+            "в документе",
+            "в файле",
+            "по источникам",
+            "есть ли в бт",
+            "найди описание бт",
+            "что в загруженном файле",
+            "покажи, где",
+            "покажи где",
+            "где в источниках",
+        )
+        if any(marker in normalized for marker in source_question_markers):
+            intent_type = "search_context_sources" if any(marker in normalized for marker in ("найди", "покажи, где", "покажи где", "где в источниках")) else "answer_from_context"
+            return RoutedIntent(intent_type, None, 0.9)
+
         if artifact_type is not None:
             return RoutedIntent("draft_artifact_patch", artifact_type, 1.0)
 

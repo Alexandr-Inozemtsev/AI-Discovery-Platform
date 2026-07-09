@@ -798,8 +798,11 @@ def assistant_chat(project_id: str, payload: AssistantChatRequest, db: Session =
         payload={
             'intent': intent,
             'preview': result.preview,
+            'evidence': result.evidence,
+            'source_trace': result.source_trace,
             'warnings': result.warnings,
             'errors': result.errors,
+            'metadata': result.metadata,
         },
     )
     assistant_repo.add_tool_run(

@@ -65,6 +65,19 @@ assistant chat message
 
 Если processor для artifact type не подключён, Chat Orchestrator возвращает русское сообщение без `proposed_patch`.
 
+## Q&A по источникам
+
+Обычные вопросы пользователя по загруженным материалам не являются patch-flow. Если `IntentRouter` определяет `answer_from_context` или `search_context_sources`, `DiscoveryChatOrchestrator`:
+
+- использует только `SimpleRetriever` по `CONTEXT` artifact;
+- читает `uploaded_files`, `documents`, `links`, `chunks` и `extracted_text`;
+- исключает `metadata_only` источники из evidence;
+- возвращает `human_message`, `evidence`, `source_trace` и `warnings`;
+- не вызывает `StageDraftProcessor`, `RequirementsProcessor` или `ApplyPatchService`;
+- не создаёт `proposed_patch`, `assistant action` или preview изменения.
+
+Если `indexing_status = requires_update`, но extracted chunks уже есть, ответ строится по этим chunks и содержит warning: контекст требует обновления, но использован уже извлечённый текст файла.
+
 ## Совместимость
 
 Старые Product AI Agents остаются в `backend/app/agents/` для существующих endpoints и fallback-сценариев. Их можно помечать как compatibility/deprecated на уровне docs, но нельзя удалять без отдельного migration plan и regression tests.
