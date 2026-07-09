@@ -20,44 +20,33 @@ class ChatContextAssembler:
         artifacts: dict[str, Any],
         retrieval_result: RetrievalResult,
     ) -> dict[str, Any]:
-        safe_context_artifact = context_artifact if isinstance(context_artifact, dict) else {}
-
-        extracted_knowledge = safe_context_artifact.get("extracted_knowledge")
-        if not isinstance(extracted_knowledge, dict):
-            extracted_knowledge = {}
-
-        readiness = safe_context_artifact.get("readiness")
-        if not isinstance(readiness, dict):
-            readiness = extracted_knowledge.get("readiness")
-        if not isinstance(readiness, dict):
-            readiness = {}
-
         evidence = [chunk.to_dict() for chunk in retrieval_result.chunks]
         open_questions: list[str] = []
         assumptions: list[str] = []
-
         if not evidence:
             open_questions.append("Нет подтверждённых evidence для запроса; нужно уточнить источники или добавить данные.")
             assumptions.append("Выводы без retrieved chunks должны быть помечены как предположения.")
 
-        source_trace = retrieval_result.source_trace if isinstance(retrieval_result.source_trace, list) else []
-
+        source_trace = retrieval_result.source_trace
+        safe_context_artifact = context_artifact if isinstance(context_artifact, dict) else {}
+        extracted_knowledge = safe_context_artifact.get("extracted_knowledge")
+        if not isinstance(extracted_knowledge, dict):
+            extracted_knowledge = {}
+        context_readiness = safe_context_artifact.get("readiness") or extracted_knowledge.get("readiness") or {}
         payload = {
             "project_snapshot": self._project_snapshot(project),
             "artifact_type": artifact_type.value,
             "message": message,
-            "artifact_summaries": self._artifact_summaries(artifacts or {}),
+            "artifact_summaries": self._artifact_summaries(artifacts),
             "retrieved_chunks": evidence,
             "source_trace": source_trace,
-            "context_readiness": readiness,
+            "context_readiness": context_readiness,
             "retrieval_warnings": retrieval_result.warnings,
             "assumptions": assumptions,
             "open_questions": open_questions,
             "data_policy": "Полный корпус документов не передаётся в LLM; используются только top-k chunks и ручной контекст.",
         }
-
         prompt_context = self._truncate(json.dumps(payload, ensure_ascii=False, indent=2), self.max_chars)
-
         return {
             **payload,
             "prompt_context": prompt_context,
@@ -79,32 +68,22 @@ class ChatContextAssembler:
 
     def _artifact_summaries(self, artifacts: dict[str, Any]) -> dict[str, Any]:
         summaries: dict[str, Any] = {}
-
         for key, value in artifacts.items():
             if hasattr(value, "artifact_type"):
-                structured_content = getattr(value, "structured_content", None)
-                if not isinstance(structured_content, dict):
-                    structured_content = {}
-
                 summaries[str(key)] = {
                     "artifact_type": getattr(value.artifact_type, "value", value.artifact_type),
                     "version": getattr(value, "version", None),
                     "content": self._truncate(str(getattr(value, "content", "") or ""), 1200),
-                    "structured_keys": list(structured_content.keys())[:30],
+                    "structured_keys": list((getattr(value, "structured_content", None) or {}).keys())[:30],
                 }
             elif isinstance(value, dict):
-                structured_content = value.get("structured_content")
-                if not isinstance(structured_content, dict):
-                    structured_content = {}
-
                 summaries[str(key)] = {
                     "version": value.get("version"),
                     "content": self._truncate(str(value.get("content") or ""), 1200),
-                    "structured_keys": list(structured_content.keys())[:30],
+                    "structured_keys": list((value.get("structured_content") or {}).keys())[:30],
                 }
             else:
                 summaries[str(key)] = self._truncate(str(value or ""), 1200)
-
         return summaries
 
     def _truncate(self, value: str, max_chars: int) -> str:
@@ -120,3 +99,4 @@ def to_plain_dict(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
         return asdict(value)
     return {}
+
